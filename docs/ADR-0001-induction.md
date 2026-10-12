@@ -157,6 +157,15 @@ Before the vocabulary is frozen for outside guests:
 4. Frame discriminators (`initialize`, `hello`, `call`, `result`, `host`,
    `host_reply`) contain no `bgi` — no change needed (verified).
 
+**Status (2026-10-12).** Item 1 landed: the carrier writes
+`induction_protocol::ENCODING_ENV` and the fixtures/guest read the codec through
+`induction_protocol::Encoding` (effector `aefcfce`). The codec enum then
+followed to its one home — `Encoding` is the only one left (effector-protocol's
+and aura-booth's copies are gone; aura-booth re-exports this crate's, so its own
+ADR-0037 §2 ruling stands). Items 2 and 3 — the carrier/language value, the
+error strings, the fixture binary names — are still open, and moving them means
+the aura realm's persisted plane (delete-and-rebuild policy applies).
+
 ## Divergences found while building this (each with its site)
 
 Facts, not plans — all verified in the shipped code:

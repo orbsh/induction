@@ -4,6 +4,39 @@ Written 2026-10-12. For whoever continues this work (another session, another
 agent, or future me). Facts only; every claim here was verified by running
 something, and the commands to re-verify are at the bottom.
 
+## Update — batches 1 and 1b landed (2026-10-12, later the same day)
+
+The sections below are kept as the handoff snapshot. These are the deltas, all
+verified by the gates at the bottom of this note.
+
+- **Batch 1 landed and pushed.** effector `aefcfce` — the shim crate deleted,
+  and `bgi_loop` / `one_shot` / `bgi_nu.nu` moved to
+  `crates/runtime/examples/` (they are shim-free CARRIER fixtures, so effector
+  keeps them; the codec env name became `induction_protocol::ENCODING_ENV`);
+  aura `71e5ac3`; prism `0aa8dd9` (`booths.rs`'s `echo_nu` spec pointed at the
+  deleted path — a fourth site §4 below does not list); induction `d4748ce`
+  (the shim's arm-by-arm demo as `examples/demo.rs`, plus the CBOR
+  real-process leg in `pair.rs`; `cargo test --workspace` 33/0).
+- **§4's coupling was overstated.** Only the `.nu` SOURCE path forces a
+  co-land (4 sites: aura `echo.rs` x2 + `exec_booth.rs`, prism `booths.rs`).
+  The `bgi_loop` BIN path resolves through `effector/target/debug/examples/`,
+  which any effector crate's example lands in — unchanged. And
+  `examples/bgi_demo.rs` was the ONLY artifact that imported the shim; the
+  three fixtures hand-write their frames.
+- **1b landed too.** `exec.rs`'s frames are `induction_protocol`'s now
+  (`CallFrame` / `HostFrame` + `Arm` / `Reply` / `ResultFrame`; the local
+  `TypedHostFrame` is gone, `emit`'s no-reply rule is `Arm::has_reply()`, and
+  the timer/queue arms effector could not serve before dispatch now). The codec
+  enum has ONE home — `induction_protocol::Encoding`, serde `"json"`/`"cbor"`:
+  effector-protocol's and aura-booth's copies are deleted (aura-booth
+  re-exports the protocol crate's, so its own ADR-0037 §2 "stays
+  effector-free" ruling holds) and the realm's `map_encoding` seam died with
+  them. Induction gained `Reply::to_value()` for the CBOR side, and the serde
+  spelling is locked by a test.
+- **Still open:** §5 items 2/3 — the `"bgi"` carrier-language value (a
+  PERSISTED aura field, delete-and-rebuild applies), the error strings, and the
+  fixture/example binary names — plus the documentation sweep (§7 below).
+
 ## 1. Repository state
 
 - Path: `~/world/induction`, branch `main`.
