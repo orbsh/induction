@@ -219,3 +219,75 @@ async fn a_hook_is_reachable_by_its_reserved_name() {
     }
     process.kill();
 }
+
+/// The guest's CBOR codec, over a real process. The parent here is hand-written
+/// (ciborium straight onto the pipes) rather than `induction-host`: the host
+/// session's writer is JSON-lines by contract, so the CBOR parent a deployment
+/// uses is the CARRIER that declares the codec — this test speaks what that
+/// carrier speaks. Without it the guest's CBOR loop has no real-process
+/// coverage at all (`wire.rs` locks the declaration, not the loop; the
+/// hand-written loop shape that rides the same body is likewise only reached
+/// here).
+#[test]
+fn the_cbor_codec_carries_the_same_shapes_over_a_real_process() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_loop_guest"))
+        .env("INDUCTION_ENCODING", "cbor")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn the guest fixture in CBOR mode");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let mut stdout = child.stdout.take().expect("stdout");
+
+    // One request document out; host frames serviced inline (the carrier's
+    // exchange loop); the result value back. `emit` carries no reply.
+    let mut call = |frame: Value, answer: Option<Value>| -> Value {
+        ciborium::ser::into_writer(&frame, &mut stdin).expect("cbor encode");
+        stdin.flush().unwrap();
+        loop {
+            let v: Value = ciborium::de::from_reader(&mut stdout).expect("a frame document");
+            if let Some(host) = v.get("host") {
+                if host.get("type").and_then(Value::as_str) == Some("emit") {
+                    continue; // fire-and-forget by contract
+                }
+                let reply = json!({
+                    "host_reply": { "ok": answer.clone().expect("unexpected ctx call") }
+                });
+                ciborium::ser::into_writer(&reply, &mut stdin).expect("cbor encode");
+                stdin.flush().unwrap();
+                continue;
+            }
+            return v.get("result").cloned().unwrap_or(Value::Null);
+        }
+    };
+
+    // The pull form of the declaration, from the same registry, under CBOR.
+    let schema = call(CallFrame::call(1, "interface_schema", Value::Null).to_value(), None);
+    assert!(schema["receives"]["echo"].is_object(), "{schema}");
+    assert_eq!(schema["hooks"][0], "__wake", "{schema}");
+
+    let out = call(CallFrame::call(2, "echo", json!({ "n": 1 })).to_value(), None);
+    assert_eq!(out, json!({ "echo": { "n": 1 } }), "{out}");
+
+    // The ctx arm crosses the boundary in the guest's own spelling — the
+    // verb form — and its host_reply comes back through the same document
+    // stream that carried the request.
+    let out = call(
+        CallFrame::call(3, "ask_host", Value::Null).to_value(),
+        Some(json!({ "verb": "pages", "args": { "filter": "rust" } })),
+    );
+    assert_eq!(out["from_host"]["verb"], "pages", "{out}");
+
+    // A failing handler still rides back as an error VALUE, never a Null.
+    let out = call(CallFrame::call(4, "boom", Value::Null).to_value(), None);
+    assert!(
+        out.as_str().unwrap_or_default().contains("deliberate failure"),
+        "a failing handler rides back as an error value: {out}"
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+}

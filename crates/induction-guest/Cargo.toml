@@ -26,6 +26,12 @@ workspace = true
 name = "loop"
 crate-type = ["bin"]
 
+# The arm-by-arm showcase (every ctx arm in one binary) — compiled by
+# `cargo test`, so it is also the façade's compile-level acceptance.
+[[example]]
+name = "demo"
+crate-type = ["bin"]
+
 # The guest fixture this crate's pair test spawns: a real guest binary built
 # from this library. A bin target of THIS package, so cargo links it for the
 # tests and exports CARGO_BIN_EXE_loop_guest. `test = false`: never a test.
