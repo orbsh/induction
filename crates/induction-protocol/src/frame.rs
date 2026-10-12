@@ -349,11 +349,17 @@ impl Reply {
         Reply::Error(msg.into())
     }
 
-    pub fn to_line(&self) -> String {
+    /// The frame as a value — what a CBOR host writes (`to_line` is the
+    /// JSON-lines form of the same shape).
+    pub fn to_value(&self) -> Value {
         match self {
-            Reply::Ok(v) => json!({ "host_reply": { "ok": v } }).to_string(),
-            Reply::Error(e) => json!({ "host_reply": { "error": e } }).to_string(),
+            Reply::Ok(v) => json!({ "host_reply": { "ok": v } }),
+            Reply::Error(e) => json!({ "host_reply": { "error": e } }),
         }
+    }
+
+    pub fn to_line(&self) -> String {
+        self.to_value().to_string()
     }
 
     /// Decode a reply frame. The canonical error key is `error`; the

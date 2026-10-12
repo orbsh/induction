@@ -219,6 +219,15 @@ fn reply_shapes_and_the_error_key() {
         Reply::error("boom").to_line(),
         r#"{"host_reply":{"error":"boom"}}"#
     );
+    // the Value form is the same shape (a CBOR host writes this)
+    assert_eq!(
+        Reply::ok(serde_json::json!({"n":1})).to_value(),
+        serde_json::json!({"host_reply": {"ok": {"n": 1}}})
+    );
+    assert_eq!(
+        Reply::error("boom").to_value(),
+        serde_json::json!({"host_reply": {"error": "boom"}})
+    );
 }
 
 // ====================== guest-side lines ======================
@@ -273,4 +282,19 @@ fn encoding_declaration_is_wire_visible() {
     // The guest selects its codec from the env var only — never from argv.
     assert_eq!(Encoding::from_env(), Encoding::Json); // unset in the test env
     assert_eq!(Encoding::Cbor.as_str(), "cbor");
+    // …and it is a SERIALIZED declaration: hosts carry it in their own
+    // control frames (effector's ToolCall, aura's persisted booth record),
+    // so the serde spelling is frozen here — one enum, no second copy.
+    assert_eq!(
+        serde_json::to_value(Encoding::Json).unwrap(),
+        serde_json::json!("json")
+    );
+    assert_eq!(
+        serde_json::to_value(Encoding::Cbor).unwrap(),
+        serde_json::json!("cbor")
+    );
+    assert_eq!(
+        serde_json::from_value::<Encoding>(serde_json::json!("cbor")).unwrap(),
+        Encoding::Cbor
+    );
 }

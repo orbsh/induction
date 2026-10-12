@@ -12,7 +12,14 @@
 pub const ENCODING_ENV: &str = "INDUCTION_ENCODING";
 
 /// Frame encoding, declared per session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// This is a SERIALIZED type, not just an in-process enum: a host that
+/// carries the declaration in its own control frame (effector's `ToolCall`,
+/// aura's persisted booth record) stores exactly these spellings, so the
+/// derive and the rename rule are part of the wire contract — every consumer
+/// takes this type rather than minting a second enum with the same values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Encoding {
     /// Newline-delimited JSON — the stdlib-reachable default.
     #[default]
