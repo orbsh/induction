@@ -1,0 +1,14 @@
+[package]
+name = "induction-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Induction wire vocabulary: typed frames, ctx arms, tier and schema surfaces for host-embedded resident extension processes over stdio."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+ciborium = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,36 @@
+[package]
+name = "induction-guest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Rust guest face for Induction: a typed ctx facade over the frame protocol, with the main loop, dispatch and schema answer owned by the shim."
+
+[dependencies]
+induction-protocol = { path = "../induction-protocol" }
+serde_json = { workspace = true }
+ciborium = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+# The pair test drives a real host against a real guest — the dependency runs
+# this way (guest is a dev-dep of the host's tests? no: host has no dep on
+# guest; the pair test lives here because a package's own bins are built for
+# its own tests).
+induction-host = { path = "../induction-host" }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
+
+[[example]]
+name = "loop"
+crate-type = ["bin"]
+
+# The guest fixture this crate's pair test spawns: a real guest binary built
+# from this library. A bin target of THIS package, so cargo links it for the
+# tests and exports CARGO_BIN_EXE_loop_guest. `test = false`: never a test.
+[[bin]]
+name = "loop_guest"
+path = "tests/fixtures/loop_guest.rs"
+test = false
+doc = false

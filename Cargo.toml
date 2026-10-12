@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/induction-protocol",
+    "crates/induction-host",
+    "crates/induction-guest",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+# Dependency whitelist (ADR-0001 §"boundary"): the protocol and guest halves
+# are pure serde-family; the host half adds tokio (process/io) + libc (prctl).
+# Not allowed here, ever: okm/fjall, aura-*, effector-config, steel-core,
+# pyo3, sandbox-runtime-rs, ureq, tokio-tungstenite — transports (WS) and
+# sandbox policy belong to the HOST, not to the protocol.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ciborium = "0.2"
+anyhow = "1"
+tokio = { version = "1", features = [
+    "rt", "rt-multi-thread", "macros", "io-util", "io-std", "process", "sync", "time",
+] }
+libc = "0.2"
+
+[workspace.lints.rust]
+# deny (not forbid): the PDEATHSIG pre_exec site needs one narrow, commented
+# #[allow(unsafe_code)]; an unconditional allow must not hide there.
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

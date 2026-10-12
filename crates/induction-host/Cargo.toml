@@ -1,0 +1,27 @@
+[package]
+name = "induction-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Host-side session driver for Induction: spawn resident extension processes, handshake, deliver frames, route ctx arms."
+
+[dependencies]
+induction-protocol = { path = "../induction-protocol" }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+libc = { workspace = true }
+
+# The live-child fixture: a real guest process for the spawn/handshake/IO tests.
+# A bin target of THIS package on purpose — cargo builds a package's own bins
+# for its integration tests (CARGO_BIN_EXE_<name>), so the test needs no manual
+# build step and can never test a stale binary. The name is distinct from the
+# guest crate's own fixture (`loop_guest`) on purpose: two bins sharing a name
+# across packages made CARGO_BIN_EXE pick the wrong binary. `test = false`.
+[[bin]]
+name = "raw_guest"
+path = "tests/fixtures/raw_guest.rs"
+test = false
+doc = false
+
+[lints]
+workspace = true
