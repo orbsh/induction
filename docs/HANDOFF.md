@@ -33,9 +33,16 @@ verified by the gates at the bottom of this note.
   effector-free" ruling holds) and the realm's `map_encoding` seam died with
   them. Induction gained `Reply::to_value()` for the CBOR side, and the serde
   spelling is locked by a test.
-- **Still open:** §5 items 2/3 — the `"bgi"` carrier-language value (a
-  PERSISTED aura field, delete-and-rebuild applies), the error strings, and the
-  fixture/example binary names — plus the documentation sweep (§7 below).
+- **§5's rename list is closed.** Item 2: the carrier/language value is
+  `"induction"` (the persisted field's OLD rows are garbage by the
+  delete-and-rebuild ruling). Item 3: the error strings read
+  `induction carrier:` / `induction/nu adapter:`, and the fixtures are
+  `induction_loop` / `induction_nu.nu` — a fourth cross-repo path co-land, done
+  the same way as the first. Internal Rust identifiers (`BgiSession`, `BgiKind`)
+  and test names stay: ADRs and PLANs cite them by name.
+- **Still open:** the prose sweep of `BGI|bgi` (§7 below) — the vocabulary in
+  ADR history and PLAN logs is untouched by design, and the current-state design
+  docs never state the literal value, so the sweep is text-only.
 
 ## 1. Repository state
 

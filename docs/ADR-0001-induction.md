@@ -157,14 +157,22 @@ Before the vocabulary is frozen for outside guests:
 4. Frame discriminators (`initialize`, `hello`, `call`, `result`, `host`,
    `host_reply`) contain no `bgi` — no change needed (verified).
 
-**Status (2026-10-12).** Item 1 landed: the carrier writes
+**Status (2026-10-12).** All four items landed. Item 1: the carrier writes
 `induction_protocol::ENCODING_ENV` and the fixtures/guest read the codec through
-`induction_protocol::Encoding` (effector `aefcfce`). The codec enum then
-followed to its one home — `Encoding` is the only one left (effector-protocol's
-and aura-booth's copies are gone; aura-booth re-exports this crate's, so its own
-ADR-0037 §2 ruling stands). Items 2 and 3 — the carrier/language value, the
-error strings, the fixture binary names — are still open, and moving them means
-the aura realm's persisted plane (delete-and-rebuild policy applies).
+`induction_protocol::Encoding`. The codec enum followed to its one home —
+`Encoding` is the only one left (effector-protocol's and aura-booth's copies are
+gone; aura-booth re-exports this crate's, so its own ADR-0037 §2 ruling stands).
+Item 2: the carrier/language value is `"induction"` (effector's carrier arm, the
+registration sites in aura/prism, and the control-plane examples in effector's
+USAGE). Item 3: the error strings read `induction carrier:` / `induction/nu
+adapter:`, and the fixtures are named `induction_loop` / `induction_nu.nu`.
+Item 4 needed nothing, as recorded.
+
+Left outside the list on purpose: internal Rust identifiers (`BgiSession`,
+`BgiKind`, `bgi_bin`, test function names such as
+`bgi_nu_booth_store_emit_roundtrip`) and the prose sweep — ADRs and PLANs cite
+some of those by name, so renaming them would turn a vocabulary change into doc
+drift. The sweep of `BGI|bgi` in prose is its own pass (HANDOFF §7).
 
 ## Divergences found while building this (each with its site)
 
