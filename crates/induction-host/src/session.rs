@@ -5,9 +5,13 @@
 //! already needs (its event source and the child's stdout are two live sources).
 //! [`Session`] bundles them for hosts that drive strictly request/response.
 //!
-//! Every pipe await in this module carries a budget. There is no unbounded
-//! await anywhere: a stalled peer stalls only itself, and the host decides
-//! whether a missed budget ends the session.
+//! Writes and the handshake always carry a budget; reads come in two forms, and
+//! the distinction is load-bearing. [`Reader::next_line`] takes a budget (the
+//! handshake, a peer probe); [`Reader::next_frame`] awaits with none, because a
+//! live extension may legitimately be silent — an extension with nothing to say
+//! produces no frames, and the host's events arrive on the host's own clock. A
+//! stalled peer stalls only itself; the host decides what a missed WRITE budget
+//! means.
 
 use std::time::Duration;
 
@@ -22,7 +26,9 @@ pub struct Budgets {
     pub handshake: Duration,
     /// One frame write (write + flush).
     pub write: Duration,
-    /// One read when the host is waiting for a specific line.
+    /// One budgeted read ([`Reader::next_line`]): the handshake, and peer
+    /// probes. The driver reads WITHOUT a budget on purpose — see
+    /// [`Reader::next_frame`].
     pub read: Duration,
 }
 
@@ -55,6 +61,20 @@ impl<R: AsyncRead + Unpin> Reader<R> {
     pub async fn next_line(&mut self, budget: Duration) -> Option<String> {
         match tokio::time::timeout(budget, self.lines.next_line()).await {
             Ok(Ok(Some(line))) => Some(line),
+            _ => None,
+        }
+    }
+
+    /// The next frame line, awaiting with NO budget.
+    ///
+    /// A live session may legitimately be silent: an extension with nothing to
+    /// say produces no frames, and the host's events arrive on the host's own
+    /// clock. So an idle read must not become an outcome — only the channel
+    /// closing does. `None` here means exactly one thing: the child died,
+    /// closed its stdout, or the read errored.
+    pub async fn next_frame(&mut self) -> Option<String> {
+        match self.lines.next_line().await {
+            Ok(Some(line)) => Some(line),
             _ => None,
         }
     }

@@ -25,7 +25,8 @@ pub enum Outcome {
     SpawnFailed(String),
     /// `initialize` → `hello` did not complete (missing, malformed, or late).
     HandshakeFailed,
-    /// The child closed its channel (or a read budget expired on an idle peer).
+    /// The child closed its channel (or the read errored) — the only
+    /// termination signal a live session produces on its own.
     GuestGone,
     /// A frame write missed its budget: the guest is not reading. The frame did
     /// not land — a host keeping a cursor must not advance it.
@@ -61,7 +62,7 @@ where
                     None => return Outcome::ShuttingDown,
                 }
             }
-            line = reader.next_line(budgets.read) => {
+            line = reader.next_frame() => {
                 match line {
                     Some(line) => match route_line(ops, &line).await {
                         Routed::Reply(reply) => {

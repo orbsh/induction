@@ -330,3 +330,51 @@ async fn a_driver_run_ends_when_the_event_source_closes() {
     let outcome = run_driver(&mut session, &Stub, &mut rx, budgets).await;
     assert_eq!(outcome, Outcome::ShuttingDown);
 }
+
+#[tokio::test]
+async fn a_silent_guest_is_not_a_dead_guest() {
+    // An extension with nothing to say sends no frames; a read budget must not
+    // turn that silence into an outcome (it would respawn a healthy extension
+    // once per window).
+    let (host_side, guest_side) = tokio::io::duplex(1024);
+    let guest = tokio::spawn(async move {
+        let (r, mut w) = tokio::io::split(guest_side);
+        let mut reader = BufReader::new(r);
+        let mut line = String::new();
+        let _ = reader.read_line(&mut line).await;
+        let _ = w
+            .write_all(b"{\"type\":\"hello\",\"name\":\"quiet\",\"schema\":{\"receives\":{}}}\n")
+            .await;
+        // silent, channel held open: alive, with nothing to say
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        drop(w); // only now does it go away
+    });
+
+    let (r, w) = tokio::io::split(host_side);
+    let mut session = induction_host::Session::new(r, w);
+    let budgets = Budgets {
+        handshake: Duration::from_secs(1),
+        write: Duration::from_millis(50),
+        read: Duration::from_millis(50), // deliberately far below the silence
+    };
+    assert!(session.handshake(budgets.handshake).await.is_some());
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<CallFrame>(1);
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(250),
+            run_driver(&mut session, &Stub, &mut rx, budgets)
+        )
+        .await
+        .is_err(),
+        "a quiet guest must not be reported as gone"
+    );
+
+    // the guest really goes away; now — and only now — the driver ends
+    guest.await.unwrap();
+    assert_eq!(
+        run_driver(&mut session, &Stub, &mut rx, budgets).await,
+        Outcome::GuestGone
+    );
+    drop(tx);
+}
