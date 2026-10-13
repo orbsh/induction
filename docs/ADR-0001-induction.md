@@ -212,10 +212,15 @@ Facts, not plans — all verified in the shipped code:
   `induction-protocol` for frames and the codec enum.
 - `aura` (batch 3, refactor not drop-in) has the realm's process-carrier branch
   delegate to `induction-host`. Its WS remote-effector leg stays in aura as
-  another transport over the same session code; its own integration question — `effector-protocol::HostOp` (the WS/tool contract)
-  versus `induction-protocol`'s host frames — is **explicitly left open here**:
-  the pipe leg's vocabulary has one home now, and collapsing the two host-call
-  types is a decision for that batch.
+  another transport over the same session code. **Resolved 2026-10-13 (batch 3
+  as landed):** the two host-call types are NOT collapsed — `HostOp` (WS, serde-
+  tagged, id-paired across concurrent streams) and the pipe `HostFrame`
+  (in-band, serially paired) are two TRANSPORT encodings of one arm VOCABULARY
+  (`Arm`); the collapse that matters is the dispatcher's: `induction-host`
+  `route_frame` is the codec- and transport-independent core, and both hosts
+  drive it (effector's process carrier over a `HostOps` bridge adapter, mudra's
+  verb host directly). What is protocol is shared to the last arm name; what is
+  transport stays with the transport.
 - History in this workspace keeps its ADRs: historical decision text is not
   rewritten, current-state text is updated, and the rename carries a terminology
   note (the `probe → effector` precedent).

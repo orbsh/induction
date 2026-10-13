@@ -44,6 +44,153 @@ verified by the gates at the bottom of this note.
   ADR history and PLAN logs is untouched by design, and the current-state design
   docs never state the literal value, so the sweep is text-only.
 
+## Session handoff — the migration, as landed (2026-10-12, end of session)
+
+Written when the session stopped, mid-sweep. Facts verified by the runs named;
+the git state below is what `git log`/`git status` printed at the time of
+writing.
+
+### Landed and pushed (three rounds, four repos, all three remotes each)
+
+Round 1 — batch 1 (the shim out, the fixtures rehomed):
+effector `aefcfce` · aura `71e5ac3` · prism `0aa8dd9` · induction `d4748ce`.
+Round 2 — 1b (frames + codec enum ride `induction-protocol`):
+effector `30d6f40` · induction `542d951` + `4410874` · aura `205c511` +
+`c483518` · prism `c590d75`.
+Round 3 — 1c (the rename list's items 2/3) + the doc work:
+effector `b157191` + `f42d2aa` · aura `9494f79` · prism `37f4148` ·
+induction `2c7818d`.
+
+Net state of the vocabulary: the pipe protocol is named **Induction**
+everywhere it is wire- or path-visible — the env name
+(`induction_protocol::ENCODING_ENV`), the codec enum (`Encoding`, one copy;
+effector-protocol's and aura-booth's deleted, aura-booth re-exports), the
+carrier/language value (`"induction"`, effector + aura + prism), the error
+strings (`induction carrier:` / `induction/nu adapter:`), and the fixtures
+(`induction_loop` / `induction_nu.nu`). effector's `USAGE` (en+zh) gained §1.1
+(the hop topology) and had §4.1 realigned with ADR-0027 (`code` is
+`CodeRef { url, sha256 }` — the old `inline`/`link` text was stale, and its
+"holds nothing between calls" was false since the code cache landed).
+
+### Uncommitted right now (the prose sweep, stopped mid-way on request)
+
+- **effector, 10 files** (comment/string level): `README.md`,
+  `crates/protocol/src/lib.rs`, `crates/runtime/Cargo.toml`,
+  `crates/runtime/examples/induction_nu.nu`, `crates/runtime/src/carrier.rs`,
+  `.../carrier/exec.rs`, `.../carrier/python.rs`, `.../carrier/session.rs`,
+  `crates/runtime/tests/carriers.rs`, `crates/runtime/tests/exec_carrier.rs`.
+  Three edits there are behavior-adjacent, not pure prose: the nu session dir
+  name (`effector-induction-nu-<pid>-<id>`), the fixture's own env var
+  (`$env.BGI_REP` → `$env.INDUCTION_REP`), and the fire-and-forget stderr
+  prefix (`[induction] ctx.…`). `cargo test -p effector-runtime --features
+  python,steel` was **41/0 green after those three**; the later comment-only
+  edits were not re-run.
+  Same batch also fixed a real drift in `README.md`: it still listed the
+  retired `wasmtime` carrier and told readers to test with
+  `--features steel,python,wasmtime` (a feature that no longer exists).
+- **aura, 7 files** (comment level): `crates/booth/src/lib.rs`,
+  `crates/engine/tests/{callslot,echo,exec_booth,remote_effector}.rs`,
+  `crates/realm/src/{instance,lib}.rs`.
+- **Untouched, still saying `bgi` in live passages**: `aura/docs/design/
+  booth-api.md` + `booth-api-en.md` (they also still say **bgi-guest shim** —
+  that crate is `induction-guest` in the induction repo now), `aura/docs/design/
+  event-flow.md` + `event-flow-en.md` (one matrix row says `bgi/exec/wasm`);
+  `aura/README.md` (`BGI/Exec`, and "nu booths ride `bgi`"); `krystallizer/
+  docs/adr/0007-*` (3 refs each — check whether live); `prism/docs/
+  handshake-plan.md` (1 ref — the user's own doc, left alone).
+- **Not swept by design**: ADRs and PLAN logs (history — the house precedent
+  swept only design docs' *live passages* and left historical phase entries
+  unedited, e.g. the `partition key → instance key` rename), and internal Rust
+  identifiers + test names that those docs cite by name (`BgiSession`,
+  `BgiKind`, `bgi_bin`, `bgi_booth_*`, `nu_bgi_*`).
+
+### What remains, in order
+
+1. ~~**Finish the sweep**~~ DONE 2026-10-13: aura's four design docs + README
+   (the stale `wasmtime` feature line died with it), krystallizer ADR-0007's
+   live `language:` value; one record line added to `aura/docs/PLAN.md`
+   (Phase 4.21, the `partition key → instance key` format). Historical
+   entries and internal identifiers untouched by design.
+2. ~~**Batch 2 — mudra**~~ DONE 2026-10-13 (uncommitted): `host.rs` re-based
+   on `induction-protocol` + `induction-host` (path deps, aura-booth form);
+   the store-coupled event pull and the verb surface stayed in mudrad; the
+   v1 live smoke is now a resident e2e (`host_live_test.rs` + a
+   `CARGO_BIN_EXE` fixture bin — real child, real fjall store, real
+   `run_verb`). mudra's own ADR/PLAN "not started" lines and its live bgi
+   passages swept in the same pass (zh twin gained the missing 2026-10-12
+   arm-set note).
+3. ~~**Batch 3**~~ DONE 2026-10-13 (uncommitted), scoped DOWN from the
+   original plan with cause: the session-I/O delegation (spawn_only, a fifo
+   adapter) died on contact — induction-host's `Reader` is line-framed
+   (JSON only, CBOR is self-delimited documents), the fifo's write
+   semantics are open-write-CLOSE per frame (not a duplex stream), bwrap is
+   effector-specific, and the sync `spawn_blocking`/`Sessions` model would
+   have to become async for no second live source. What LANDED is the
+   dispatcher: `induction-host` gained `route_frame` (codec-blind arm
+   core; `Routed::Reply` now carries the typed `Reply`) +
+   `induction-protocol::parse_guest_value` (CBOR hosts decode documents to
+   `Value`s and drive the same core); effector's `BgiSession::exchange`
+   routes host frames through a `HostOps` bridge adapter (`BridgeOps` in
+   `exec.rs`), mudra drives the core directly. The dispatcher enforcing the
+   canonical invoke payload surfaced two fixture tests riding the
+   unvalidated past — corrected to the nested booth shape. ADR-0001's open
+   question is resolved there (HostOp = WS transport encoding, HostFrame =
+   pipe transport encoding, one arm vocabulary, two hosts, one core).
+   `HostOp`, `host_bridge_for` and all of aura: 0 changes.
+4. ~~**Two pre-existing red spots**~~ DONE 2026-10-13 (uncommitted):
+   `steel_injection.rs` migrated to `InstanceKey::Named` (aura-engine
+   `cargo test` whole-package green again: 18 targets), and
+   `event_addressing.rs`'s two python cases gained
+   `#[cfg(feature = "python")]` (default-build green, `--features python`
+   3/3).
+
+### Traps this session paid for
+
+- **Path-referenced fixtures are cross-repo coupling.** aura's tests resolve
+  `effector/target/debug/examples/<name>` and the `.nu` script by SOURCE path,
+  prism too — so a fixture rename/move is always a co-land (it happened four
+  times). The bin path itself is stable (any effector crate's example lands
+  there); only the source path and the name move.
+- **`cargo test` does not build another package's examples.** Run
+  `cargo build -p effector-runtime --examples` in `~/world/effector` before
+  aura's or prism's fixture tests; after a fixture rename, delete the stale
+  binary from `target/debug/examples/` or the assert fires on a name that no
+  longer exists.
+- **The review panel auto-stages files as they are written** (effector's
+  changes showed up staged without any `git add`). Use `git commit --only
+  <paths>` per theme so unrelated pre-staged files cannot be swept in.
+- **prism's `turn_e2e` needs `PYTHONHOME`/`PYTHONPATH`** for the python booth
+  (without them: `code for hash md5 was not found`, and one case hangs). Not
+  verified from a green baseline in this session — the three failures there are
+  environment-side and were left alone.
+- **The agent terminal redacts/mangles some tokens in its own output**
+  (`bgi-guest`, `ChannelEncoding` printed as `n`). Read files with the file
+  tool when precision matters; do not trust a mangled grep line.
+
+### Re-verify (commands)
+
+```
+cd ~/world/effector && cargo build --workspace --examples --offline
+export RUSTFLAGS="-L native=/nix/store/g7ly36jk8znlzbw6vi2z43g56kvwjwyl-python3-3.14.7-env/lib"
+cargo test -p effector-runtime -p effector-protocol -p effector-config \
+  --features effector-runtime/python,effector-runtime/steel --offline   # 45/0
+cargo clippy --workspace --all-targets --features python,steel --offline # 0
+
+cd ~/world/induction && cargo test --workspace --offline                 # 33/0
+
+cd ~/world/aura
+cargo test -p aura-engine --features fjall,python,steel --offline \
+  --test exec_booth --test echo --test callslot --test remote_effector \
+  --test iterate --test timer_ctx                                        # 44/0
+cargo test -p aura-realm -p aura-booth --features fjall,python,steel --offline # 16/0
+
+cd ~/world/prism && cargo test -p prism --offline \
+  --test echo_e2e --test effector_mount --test identity_e2e \
+  --test code_export --test admin_nodes                                   # 28/0
+```
+
+---
+
 ## 1. Repository state
 
 - Path: `~/world/induction`, branch `main`.
