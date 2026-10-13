@@ -131,7 +131,10 @@ impl CallFrame {
             kind,
             event,
             args: v.get("args").cloned().unwrap_or(Value::Null),
-            stream_id: v.get("stream_id").and_then(|s| s.as_str()).map(str::to_string),
+            stream_id: v
+                .get("stream_id")
+                .and_then(|s| s.as_str())
+                .map(str::to_string),
         })
     }
 }

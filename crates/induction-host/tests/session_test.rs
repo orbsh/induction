@@ -66,10 +66,17 @@ async fn handshake_and_round_trip_over_a_duplex() {
     assert!(
         session
             .writer
-            .write_line(&CallFrame::call(1, "ping", json!(null)).to_line(), budgets.write)
+            .write_line(
+                &CallFrame::call(1, "ping", json!(null)).to_line(),
+                budgets.write
+            )
             .await
     );
-    let line = session.reader.next_line(budgets.read).await.expect("result line");
+    let line = session
+        .reader
+        .next_line(budgets.read)
+        .await
+        .expect("result line");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => {
             assert_eq!(r.id, json!(1));
@@ -131,7 +138,8 @@ impl HostOps for Stub {
 
 #[tokio::test]
 async fn invoke_arm_is_routed_in_both_spellings() {
-    let booth = r#"{"host":{"type":"invoke","args":{"type":"mudra","key":"w","handler":"run","args":{}}}}"#;
+    let booth =
+        r#"{"host":{"type":"invoke","args":{"type":"mudra","key":"w","handler":"run","args":{}}}}"#;
     let reply = serve(booth, &Stub).await;
     assert_eq!(reply, Reply::Ok(json!({ "handler": "run" })).to_line());
 
@@ -165,7 +173,11 @@ async fn unimplemented_arms_fail_explicitly() {
 #[tokio::test]
 async fn emit_carries_no_reply_and_undecodable_frames_are_surfaced() {
     assert_eq!(
-        serve(r#"{"host":{"type":"emit","args":{"event":"e","data":{}}}}"#, &Stub).await,
+        serve(
+            r#"{"host":{"type":"emit","args":{"event":"e","data":{}}}}"#,
+            &Stub
+        )
+        .await,
         String::new()
     );
     assert_eq!(serve("not a frame", &Stub).await, String::new());
@@ -211,7 +223,10 @@ async fn a_real_child_handshakes_and_answers() {
         process
             .session
             .writer
-            .write_line(&CallFrame::call(1, "echo", json!({"n": 1})).to_line(), budgets.write)
+            .write_line(
+                &CallFrame::call(1, "echo", json!({"n": 1})).to_line(),
+                budgets.write
+            )
             .await
     );
     let line = process
@@ -230,7 +245,10 @@ async fn a_real_child_handshakes_and_answers() {
         process
             .session
             .writer
-            .write_line(&CallFrame::call(2, "boom", json!(null)).to_line(), budgets.write)
+            .write_line(
+                &CallFrame::call(2, "boom", json!(null)).to_line(),
+                budgets.write
+            )
             .await
     );
     let line = process
@@ -241,7 +259,10 @@ async fn a_real_child_handshakes_and_answers() {
         .expect("error result line");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert!(
-            r.result.as_str().unwrap_or_default().contains("deliberate failure"),
+            r.result
+                .as_str()
+                .unwrap_or_default()
+                .contains("deliberate failure"),
             "got {r:?}"
         ),
         other => panic!("expected a result frame, got {other:?}"),
@@ -252,7 +273,10 @@ async fn a_real_child_handshakes_and_answers() {
         process
             .session
             .writer
-            .write_line(&CallFrame::call(3, "ask_host", json!(null)).to_line(), budgets.write)
+            .write_line(
+                &CallFrame::call(3, "ask_host", json!(null)).to_line(),
+                budgets.write
+            )
             .await
     );
     let line = process
@@ -264,7 +288,10 @@ async fn a_real_child_handshakes_and_answers() {
     let reply = induction_host::route_line(&Stub, &line).await;
     match reply {
         induction_host::Routed::Reply(r) => {
-            assert!(r.to_value().to_string().contains(r#""handler":"pages""#), "got {r:?}");
+            assert!(
+                r.to_value().to_string().contains(r#""handler":"pages""#),
+                "got {r:?}"
+            );
             assert!(
                 process
                     .session
@@ -295,12 +322,18 @@ async fn a_real_child_handshakes_and_answers() {
             .session
             .writer
             .write_line(
-                &CallFrame::iterate(4, FrameKind::IterateStart, "list", json!(null), "s1").to_line(),
+                &CallFrame::iterate(4, FrameKind::IterateStart, "list", json!(null), "s1")
+                    .to_line(),
                 budgets.write
             )
             .await
     );
-    let line = process.session.reader.next_line(budgets.read).await.expect("start");
+    let line = process
+        .session
+        .reader
+        .next_line(budgets.read)
+        .await
+        .expect("start");
     assert!(line.contains(r#""done":false"#), "got {line}");
 
     process.kill();

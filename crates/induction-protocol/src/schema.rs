@@ -62,13 +62,25 @@ impl Schema {
 
     pub fn to_value(&self) -> Value {
         let mut v = Map::new();
-        v.insert("receives".into(), Value::Object(self.receives.clone().into_iter().collect()));
+        v.insert(
+            "receives".into(),
+            Value::Object(self.receives.clone().into_iter().collect()),
+        );
         v.insert(
             "wildcard_receives".into(),
-            Value::Array(self.wildcard_receives.iter().cloned().map(Value::String).collect()),
+            Value::Array(
+                self.wildcard_receives
+                    .iter()
+                    .cloned()
+                    .map(Value::String)
+                    .collect(),
+            ),
         );
         if !self.hooks.is_empty() {
-            v.insert("hooks".into(), Value::Array(self.hooks.iter().cloned().map(Value::String).collect()));
+            v.insert(
+                "hooks".into(),
+                Value::Array(self.hooks.iter().cloned().map(Value::String).collect()),
+            );
         }
         if let Some(storage) = &self.storage {
             v.insert("storage".into(), storage.clone());

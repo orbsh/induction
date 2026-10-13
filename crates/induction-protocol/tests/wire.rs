@@ -50,8 +50,8 @@ fn bad_hello_shape_rejects_at_decode() {
     // partial accept: wrong type, missing schema, missing name, junk.
     for line in [
         r#"{"type":"call","name":"x","schema":{"on":[]}}"#,
-        r#"{"type":"hello","name":"x"}"#,                  // no schema
-        r#"{"type":"hello","schema":{"on":[]}}"#,          // no name
+        r#"{"type":"hello","name":"x"}"#,         // no schema
+        r#"{"type":"hello","schema":{"on":[]}}"#, // no name
         r#"{"type":"hello","name":7,"schema":{"on":[]}}"#, // wrong type
         r#"{"type":"hello","name":"x","schema":{"on":[7]}}"#, // bad element
         "not json",
@@ -95,10 +95,22 @@ fn iterate_frames_carry_kind_op_and_stream_id() {
 
 #[test]
 fn request_frames_round_trip_and_reject_junk() {
-    let f = CallFrame::iterate(3, FrameKind::IterateNext, "list_pages", serde_json::json!({}), "s1");
+    let f = CallFrame::iterate(
+        3,
+        FrameKind::IterateNext,
+        "list_pages",
+        serde_json::json!({}),
+        "s1",
+    );
     assert_eq!(CallFrame::from_value(&f.to_value()), Some(f));
-    assert_eq!(CallFrame::from_value(&serde_json::json!({"kind":"nope","event":"e"})), None);
-    assert_eq!(CallFrame::from_value(&serde_json::json!({"kind":"call"})), None);
+    assert_eq!(
+        CallFrame::from_value(&serde_json::json!({"kind":"nope","event":"e"})),
+        None
+    );
+    assert_eq!(
+        CallFrame::from_value(&serde_json::json!({"kind":"call"})),
+        None
+    );
 }
 
 // ============================ arms ============================
@@ -136,7 +148,10 @@ fn only_emit_carries_no_reply() {
 
 #[test]
 fn host_frames_encode_the_shipped_shapes() {
-    let invoke = HostFrame::new(Arm::Invoke, serde_json::json!({"type":"mudra","key":"","handler":"run","args":{}}));
+    let invoke = HostFrame::new(
+        Arm::Invoke,
+        serde_json::json!({"type":"mudra","key":"","handler":"run","args":{}}),
+    );
     let v: serde_json::Value = serde_json::from_str(&invoke.to_line()).unwrap();
     assert_eq!(v["host"]["type"], "invoke");
     assert_eq!(v["host"]["args"]["handler"], "run");
@@ -184,7 +199,10 @@ fn invoke_payload_decodes_both_shipped_spellings() {
         })
     );
 
-    assert_eq!(InvokeCall::from_host(&serde_json::json!({"type":"invoke"})), None);
+    assert_eq!(
+        InvokeCall::from_host(&serde_json::json!({"type":"invoke"})),
+        None
+    );
 }
 
 #[test]
@@ -262,7 +280,9 @@ fn schema_event_name_is_frozen() {
 #[test]
 fn schema_rich_form_round_trips_and_subscription_is_exact() {
     let s = Schema {
-        receives: [("a:b".to_string(), serde_json::json!({}))].into_iter().collect(),
+        receives: [("a:b".to_string(), serde_json::json!({}))]
+            .into_iter()
+            .collect(),
         wildcard_receives: vec!["a:*".into()],
         hooks: vec!["__wake".into()],
         storage: Some(serde_json::json!({"collections": {}})),

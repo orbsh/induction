@@ -122,7 +122,11 @@ pub async fn route_frame(ops: &dyn HostOps, frame: GuestFrame) -> Routed {
             Some(call) => Routed::Reply(ops.invoke(&call).await.into_reply()),
             None => Routed::Reply(Reply::error("invoke arm: undecodable payload")),
         },
-        Arm::Store => Routed::Reply(ops.store(host.op.as_ref().unwrap_or(&Value::Null)).await.into_reply()),
+        Arm::Store => Routed::Reply(
+            ops.store(host.op.as_ref().unwrap_or(&Value::Null))
+                .await
+                .into_reply(),
+        ),
         Arm::IterateStart | Arm::IterateNext | Arm::IterateDispose => {
             Routed::Reply(ops.iterate(host.arm, &host.args).await.into_reply())
         }

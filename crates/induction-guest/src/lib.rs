@@ -69,7 +69,10 @@ impl Ctx<'_> {
 
     /// `ctx.emit` — fire-and-forget by contract: no reply is read.
     pub fn emit(&mut self, event: &str, data: Value) -> anyhow::Result<()> {
-        let frame = HostFrame::new(Arm::Emit, serde_json::json!({ "event": event, "data": data }));
+        let frame = HostFrame::new(
+            Arm::Emit,
+            serde_json::json!({ "event": event, "data": data }),
+        );
         self.io.write(&frame.to_value())?;
         Ok(())
     }
@@ -78,6 +81,42 @@ impl Ctx<'_> {
     /// its semantics; the host resolves it against the declared collections).
     pub fn store(&mut self, op: Value) -> anyhow::Result<Value> {
         self.round_trip(&HostFrame::store(op))
+    }
+
+    /// `ctx.iterate.start` — open a stream on a sibling booth (the consumer
+    /// face of ADR-0034). The reply carries the first envelope with the
+    /// realm-minted `stream_id` merged in.
+    pub fn iterate_start(
+        &mut self,
+        target_type: &str,
+        target_key: &str,
+        handler: &str,
+        args: Value,
+    ) -> anyhow::Result<Value> {
+        self.round_trip(&HostFrame::new(
+            Arm::IterateStart,
+            serde_json::json!({
+                "type": target_type, "key": target_key, "handler": handler, "args": args,
+            }),
+        ))
+    }
+
+    /// `ctx.iterate.next` — pull one envelope round by stream id. The realm's
+    /// registry names the producer; the id is the route.
+    pub fn iterate_next(&mut self, stream_id: &str) -> anyhow::Result<Value> {
+        self.round_trip(&HostFrame::new(
+            Arm::IterateNext,
+            serde_json::json!({ "stream_id": stream_id }),
+        ))
+    }
+
+    /// `ctx.iterate.dispose` — abandon a stream (idempotent per the realm's
+    /// routing entry; the mandatory dual of Start). No envelope reply.
+    pub fn iterate_dispose(&mut self, stream_id: &str) -> anyhow::Result<Value> {
+        self.round_trip(&HostFrame::new(
+            Arm::IterateDispose,
+            serde_json::json!({ "stream_id": stream_id }),
+        ))
     }
 
     /// `ctx.schema` — the persisted declaration copy held by the host.
@@ -105,7 +144,10 @@ impl Ctx<'_> {
 
     /// `ctx.queue.depth` — the backlog point-read.
     pub fn queue_depth(&mut self, event: &str) -> anyhow::Result<u64> {
-        let v = self.round_trip(&HostFrame::new(Arm::QueueDepth, Value::String(event.into())))?;
+        let v = self.round_trip(&HostFrame::new(
+            Arm::QueueDepth,
+            Value::String(event.into()),
+        ))?;
         Ok(v.as_u64().unwrap_or(0))
     }
 
@@ -393,12 +435,18 @@ impl Guest {
                     // A plain handler's bare reply wraps to `{done:true,value}`
                     // at the host; the bare `call` kind is the primitive.
                     induction_protocol::FrameKind::Call
-                    | induction_protocol::FrameKind::IterateStart => {
-                        self.run_handler(&mut ctx, &req.event, req.args, &req.stream_id, &mut streams)
-                    }
-                    induction_protocol::FrameKind::IterateNext => {
-                        self.pull(&mut ctx, req.stream_id.as_deref().unwrap_or(""), &mut streams)
-                    }
+                    | induction_protocol::FrameKind::IterateStart => self.run_handler(
+                        &mut ctx,
+                        &req.event,
+                        req.args,
+                        &req.stream_id,
+                        &mut streams,
+                    ),
+                    induction_protocol::FrameKind::IterateNext => self.pull(
+                        &mut ctx,
+                        req.stream_id.as_deref().unwrap_or(""),
+                        &mut streams,
+                    ),
                     induction_protocol::FrameKind::IterateDispose => {
                         streams.remove(req.stream_id.as_deref().unwrap_or(""));
                         Ok(Value::Null)
@@ -429,7 +477,10 @@ impl Guest {
         let opened = out.get("done").and_then(Value::as_bool) == Some(false);
         if opened {
             let total = out.get("total").and_then(Value::as_u64).unwrap_or(u64::MAX);
-            streams.insert(stream_id.clone().unwrap_or_default(), StreamGuard { pulled: 1, total });
+            streams.insert(
+                stream_id.clone().unwrap_or_default(),
+                StreamGuard { pulled: 1, total },
+            );
         }
         Ok(out)
     }
@@ -453,7 +504,10 @@ impl Guest {
             .handlers
             .get("__next__")
             .ok_or_else(|| anyhow::anyhow!("stream {stream_id}: no __next__ producer bound"))?;
-        h(ctx, serde_json::json!({ "stream_id": stream_id, "round": g.pulled - 1 }))
+        h(
+            ctx,
+            serde_json::json!({ "stream_id": stream_id, "round": g.pulled - 1 }),
+        )
     }
 }
 

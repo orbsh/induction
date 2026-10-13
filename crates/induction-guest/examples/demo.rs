@@ -53,7 +53,11 @@ fn main() -> anyhow::Result<()> {
             let v = ctx.invoke("other", "k1", "execute", args)?;
             Ok(v)
         })
-        .hook("__wake", |_ctx, _args| Ok(serde_json::json!({ "woke": true })))
-        .hook("__sleep", |_ctx, _args| Ok(serde_json::json!({ "slept": true })))
+        .hook("__wake", |_ctx, _args| {
+            Ok(serde_json::json!({ "woke": true }))
+        })
+        .hook("__sleep", |_ctx, _args| {
+            Ok(serde_json::json!({ "slept": true }))
+        })
         .run()
 }

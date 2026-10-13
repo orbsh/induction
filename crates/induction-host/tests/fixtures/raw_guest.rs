@@ -91,7 +91,11 @@ fn main() {
                 other => Value::String(format!("no such handler: {other}")),
             }
         };
-        let _ = writeln!(out, "{}", ResultFrame::new(Value::from(req.id), result).to_line());
+        let _ = writeln!(
+            out,
+            "{}",
+            ResultFrame::new(Value::from(req.id), result).to_line()
+        );
         let _ = out.flush();
     }
 }

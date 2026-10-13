@@ -9,9 +9,7 @@
 
 use std::time::Duration;
 
-use induction_host::{
-    Budgets, HostOps, InvokeCall, OpsFuture, Routed, Spec, route_line, spawn,
-};
+use induction_host::{Budgets, HostOps, InvokeCall, OpsFuture, Routed, Spec, route_line, spawn};
 use induction_protocol::{CallFrame, FrameKind, GuestFrame, parse_guest_line};
 use serde_json::{Value, json};
 
@@ -76,7 +74,12 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             )
             .await
     );
-    let line = process.session.reader.next_line(b.read).await.expect("schema");
+    let line = process
+        .session
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("schema");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => {
             assert!(r.result["receives"]["echo"].is_object());
@@ -90,10 +93,18 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
         process
             .session
             .writer
-            .write_line(&CallFrame::call(2, "echo", json!({"n": 1})).to_line(), b.write)
+            .write_line(
+                &CallFrame::call(2, "echo", json!({"n": 1})).to_line(),
+                b.write
+            )
             .await
     );
-    let line = process.session.reader.next_line(b.read).await.expect("echo");
+    let line = process
+        .session
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("echo");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert_eq!(r.result, json!({ "echo": { "n": 1 } })),
         other => panic!("expected a result frame, got {other:?}"),
@@ -106,10 +117,18 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .write_line(&CallFrame::call(3, "boom", Value::Null).to_line(), b.write)
             .await
     );
-    let line = process.session.reader.next_line(b.read).await.expect("boom");
+    let line = process
+        .session
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("boom");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert!(
-            r.result.as_str().unwrap_or_default().contains("deliberate failure"),
+            r.result
+                .as_str()
+                .unwrap_or_default()
+                .contains("deliberate failure"),
             "a failing handler rides back as an error value: {r:?}"
         ),
         other => panic!("expected a result frame, got {other:?}"),
@@ -120,10 +139,18 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
         process
             .session
             .writer
-            .write_line(&CallFrame::call(4, "ask_host", Value::Null).to_line(), b.write)
+            .write_line(
+                &CallFrame::call(4, "ask_host", Value::Null).to_line(),
+                b.write
+            )
             .await
     );
-    let line = process.session.reader.next_line(b.read).await.expect("ctx frame");
+    let line = process
+        .session
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("ctx frame");
     let reply = match route_line(&Verbs, &line).await {
         Routed::Reply(r) => r,
         other => panic!("expected a host arm, got {other:?}"),
@@ -132,8 +159,19 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
         reply.to_value().to_string().contains(r#""verb":"pages""#),
         "the guest used the verb spelling: {reply:?}"
     );
-    assert!(process.session.writer.write_line(&reply.to_line(), b.write).await);
-    let line = process.session.reader.next_line(b.read).await.expect("answer");
+    assert!(
+        process
+            .session
+            .writer
+            .write_line(&reply.to_line(), b.write)
+            .await
+    );
+    let line = process
+        .session
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("answer");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => {
             assert_eq!(r.id, json!(4));
@@ -148,12 +186,18 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .session
             .writer
             .write_line(
-                &CallFrame::iterate(5, FrameKind::IterateStart, "list", Value::Null, "s1").to_line(),
+                &CallFrame::iterate(5, FrameKind::IterateStart, "list", Value::Null, "s1")
+                    .to_line(),
                 b.write
             )
             .await
     );
-    let line = process.session.reader.next_line(b.read).await.expect("start");
+    let line = process
+        .session
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("start");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert_eq!(r.result["total"], 3),
         other => panic!("expected a result frame, got {other:?}"),
@@ -170,7 +214,12 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
                 )
                 .await
         );
-        let line = process.session.reader.next_line(b.read).await.expect("pull");
+        let line = process
+            .session
+            .reader
+            .next_line(b.read)
+            .await
+            .expect("pull");
         match parse_guest_line(&line) {
             Some(GuestFrame::Result(r)) => {
                 assert_eq!(r.result["item"], expect_item, "round {round}");
@@ -190,7 +239,12 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             )
             .await
     );
-    let line = process.session.reader.next_line(b.read).await.expect("exhaustion");
+    let line = process
+        .session
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("exhaustion");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert_eq!(r.result, json!({ "done": true })),
         other => panic!("expected a result frame, got {other:?}"),
@@ -212,10 +266,18 @@ async fn a_hook_is_reachable_by_its_reserved_name() {
         process
             .session
             .writer
-            .write_line(&CallFrame::call(1, "__wake", Value::Null).to_line(), b.write)
+            .write_line(
+                &CallFrame::call(1, "__wake", Value::Null).to_line(),
+                b.write
+            )
             .await
     );
-    let line = process.session.reader.next_line(b.read).await.expect("hook answer");
+    let line = process
+        .session
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("hook answer");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert_eq!(r.result, json!({ "woke": true })),
         other => panic!("expected a result frame, got {other:?}"),
@@ -268,11 +330,17 @@ fn the_cbor_codec_carries_the_same_shapes_over_a_real_process() {
     };
 
     // The pull form of the declaration, from the same registry, under CBOR.
-    let schema = call(CallFrame::call(1, "interface_schema", Value::Null).to_value(), None);
+    let schema = call(
+        CallFrame::call(1, "interface_schema", Value::Null).to_value(),
+        None,
+    );
     assert!(schema["receives"]["echo"].is_object(), "{schema}");
     assert_eq!(schema["hooks"][0], "__wake", "{schema}");
 
-    let out = call(CallFrame::call(2, "echo", json!({ "n": 1 })).to_value(), None);
+    let out = call(
+        CallFrame::call(2, "echo", json!({ "n": 1 })).to_value(),
+        None,
+    );
     assert_eq!(out, json!({ "echo": { "n": 1 } }), "{out}");
 
     // The ctx arm crosses the boundary in the guest's own spelling — the
@@ -287,7 +355,9 @@ fn the_cbor_codec_carries_the_same_shapes_over_a_real_process() {
     // A failing handler still rides back as an error VALUE, never a Null.
     let out = call(CallFrame::call(4, "boom", Value::Null).to_value(), None);
     assert!(
-        out.as_str().unwrap_or_default().contains("deliberate failure"),
+        out.as_str()
+            .unwrap_or_default()
+            .contains("deliberate failure"),
         "a failing handler rides back as an error value: {out}"
     );
 
