@@ -286,6 +286,7 @@ fn schema_rich_form_round_trips_and_subscription_is_exact() {
         wildcard_receives: vec!["a:*".into()],
         hooks: vec!["__wake".into()],
         storage: Some(serde_json::json!({"collections": {}})),
+        auth: Some(serde_json::json!({"a:b": true})),
     };
     let back = Schema::from_value(&s.to_value()).unwrap();
     assert_eq!(back, s);

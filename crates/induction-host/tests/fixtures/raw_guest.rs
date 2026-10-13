@@ -33,6 +33,7 @@ fn main() {
         wildcard_receives: Vec::new(),
         hooks: vec!["__wake".to_string()],
         storage: None,
+        auth: None,
     };
 
     loop {

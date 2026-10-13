@@ -23,7 +23,8 @@ use std::collections::BTreeMap;
 /// The event name whose `call` frame asks for the schema.
 pub const SCHEMA_EVENT: &str = "interface_schema";
 
-/// The assembled declaration: receives / wildcard_receives / hooks / storage.
+/// The assembled declaration: receives / wildcard_receives / hooks / storage /
+/// auth.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Schema {
     /// Event name → per-handler declaration object (the reserved place for
@@ -36,6 +37,11 @@ pub struct Schema {
     pub hooks: Vec<String>,
     /// The ctx.store plan source, verbatim.
     pub storage: Option<Value>,
+    /// The per-handler auth declaration, verbatim (prism's gate reads
+    /// `auth.<handler>` as a boolean from the persisted schema — the
+    /// guest declares WHICH handlers need a bound user; the host owns
+    /// the enforcement).
+    pub auth: Option<Value>,
 }
 
 impl Schema {
@@ -85,6 +91,9 @@ impl Schema {
         if let Some(storage) = &self.storage {
             v.insert("storage".into(), storage.clone());
         }
+        if let Some(auth) = &self.auth {
+            v.insert("auth".into(), auth.clone());
+        }
         Value::Object(v)
     }
 
@@ -132,6 +141,7 @@ impl Schema {
             wildcard_receives,
             hooks,
             storage: v.get("storage").cloned(),
+            auth: v.get("auth").cloned(),
         })
     }
 }
