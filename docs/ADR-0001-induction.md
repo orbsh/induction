@@ -168,11 +168,15 @@ USAGE). Item 3: the error strings read `induction carrier:` / `induction/nu
 adapter:`, and the fixtures are named `induction_loop` / `induction_nu.nu`.
 Item 4 needed nothing, as recorded.
 
-Left outside the list on purpose: internal Rust identifiers (`BgiSession`,
-`BgiKind`, `bgi_bin`, test function names such as
-`bgi_nu_booth_store_emit_roundtrip`) and the prose sweep — ADRs and PLANs cite
-some of those by name, so renaming them would turn a vocabulary change into doc
-drift. The sweep of `BGI|bgi` in prose is its own pass (HANDOFF §7).
+Left outside the list on purpose: the prose sweep of `BGI|bgi` in ADRs and
+PLANs — historical decision text is not rewritten (the
+`partition key → instance key` precedent). The internal Rust identifiers WERE
+renamed in a later pass (2026-10-13): `BgiSession` → `InductionSession`,
+`BgiKind` → `SessionKind`, and the `bgi_*`/`nu_bgi_*` test names to
+`induction_*`/`nu_induction_*` (effector runtime + aura engine tests; gates:
+effector `--features python,steel` 41/0 + clippy 0, aura workspace 70/0 /
+`--features python` 86/0 + clippy 0). The historical passages that cite the
+old names stay as written — they describe the code of their day.
 
 ## Divergences found while building this (each with its site)
 

@@ -75,6 +75,15 @@
 3. 错误串（`"bgi/nu adapter: …"`）、fixture/示例二进制名（`bgi_loop`、`bgi_demo`）。
 4. 帧的 discriminator（`initialize`、`hello`、`call`、`result`、`host`、`host_reply`）不含 `bgi` —— 无需改动（已核实）。
 
+**Status（2026-10-13 补记）**：四项均已落地。内部 Rust 标识符在后续一轮中
+也改了：`BgiSession` → `InductionSession`、`BgiKind` → `SessionKind`、
+`bgi_*`/`nu_bgi_*` 测试名 → `induction_*`/`nu_induction_*`（effector runtime
++ aura engine 测试；门：effector `--features python,steel` 41/0 + clippy 0，
+aura workspace 70/0 / `--features python` 86/0 + clippy 0）。刻意不做的只剩
+ADRs/PLANs 里的叙述扫除——历史裁决正文不改写
+（`partition key → instance key` 先例），引用旧名的历史段落原样保留——
+它们描述的是当日的代码。
+
 ## 实现过程中查实的差异（每条附站点）
 
 以下都是事实，不是计划 —— 都在已落地的代码里核过：

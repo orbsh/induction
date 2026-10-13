@@ -136,6 +136,12 @@ cargo test --workspace
 
 ## Status
 
-第一片：protocol、host、guest 落在此处；workspace 里已有的 host（`mudrad`）
-与共享底座（`effector`）后续批次迁入，然后 `aura` 的 realm 委托其
-process-carrier 分支。迁移顺序与 wire 可见的改名清单见 ADR-0001。
+抽取已完成。已落地：protocol/host/guest 三个 crate（批次 1/1b/1c）；
+`effector` 的帧与 codec 枚举骑 `induction-protocol`，宿主帧经 `route_frame`
+分发器路由（批次 3）；`mudra` 的宿主重基于 `induction-protocol` +
+`induction-host`，与 store 耦合的事件拉取留在 `mudrad`（批次 2）；aura 的
+WS 远程 effector 腿零改动——`HostOp` 与管道 `HostFrame` 是同一臂词汇的两种
+传输编码，共享的是分发器而不是会话（ADR-0001 §Consequences 已裁决）。内部
+Rust 标识符在后续一轮中改名（`BgiSession` → `InductionSession`、
+`BgiKind` → `SessionKind`、`bgi_*`/`nu_bgi_*` 测试名 → `induction_*`）；
+引用旧名的历史 ADR/PLAN 段落原样保留。

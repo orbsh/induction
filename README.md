@@ -153,7 +153,14 @@ binary.
 
 ## Status
 
-First slice: protocol, host and guest land here; the workspace's existing hosts
-(`mudrad`) and the shared substrate (`effector`) migrate in later batches, then
-`aura`'s realm delegates its process-carrier branch. The migration order and the
-wire-visible rename list are in ADR-0001.
+The extraction is complete. Landed: protocol, host and guest crates (batches
+1/1b/1c); `effector` rides `induction-protocol` for frames and the codec enum
+and routes host frames through the `route_frame` dispatcher (batch 3);
+`mudra`'s host is re-based on `induction-protocol` + `induction-host` with the
+store-coupled event pull kept in `mudrad` (batch 2); aura's WS remote-effector
+leg needed zero changes — `HostOp` and the pipe `HostFrame` are two transport
+encodings of the one arm vocabulary, and the shared piece is the dispatcher,
+not the session (resolved in ADR-0001 §Consequences). The internal Rust
+identifiers were renamed in a later pass (`BgiSession` → `InductionSession`,
+`BgiKind` → `SessionKind`, `bgi_*`/`nu_bgi_*` tests → `induction_*`);
+historical ADR/PLAN passages citing the old names stay as written.
