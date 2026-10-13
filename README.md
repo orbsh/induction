@@ -74,6 +74,64 @@ fn main() -> anyhow::Result<()> {
 (`crates/induction-guest/examples/loop.rs`) that shows the handshake, a ctx
 round trip, an iterate producer and a lifecycle hook.
 
+## What the protocol actually carries
+
+- **Process lifecycle** (`induction-host/src/process.rs`): the host spawns the
+  declared executable (`Spec`: path + env). `PDEATHSIG=SIGTERM` rides
+  `pre_exec` — a host killed with SIGKILL still takes its children down;
+  `kill_on_drop` covers the normal path. stdin/stdout are piped; **stderr
+  passes through** — the guest's own logs reach the host's terminal without
+  riding the frame protocol.
+- **Handshake** (`schema.rs`): the host writes the `initialize` frame (carrying
+  `PROTOCOL`; no negotiation — the vocabulary is static and both sides are
+  installed together), the guest answers `Hello` with its schema
+  (`receives` / `wildcard_receives` / `hooks` / `storage`). The schema stays
+  pullable at any time via a `call` to `interface_schema`.
+- **Frame vocabulary** (`frame.rs`): parent → child
+  `{"id","kind","event","args"}` with kind ∈ `call | iterate_start |
+  iterate_next | iterate_dispose` (the iterate kinds add `op` + `stream_id`);
+  child → parent in two directions — the guest invokes ctx arms as
+  `{"host":{"type":<arm>,…}}` answered by `{"host_reply":{"ok"|"error"}}`, and
+  answers host requests with `{"id","result"}`. The arms are the ADR-0043 ctx
+  members as dotted method paths (invoke/store/store.frame/timer.*/queue.*/
+  iterate.*/emit/schema).
+- **The envelope**: `{item, done:false}` / `{done:true, value?}`. A plain call
+  IS a stream whose first reply is terminal (ADR-0036) — one wire shape for
+  both, stream association derived from `done`, not from a `stream_id` field.
+- **Codec declaration** (`encoding.rs`): `INDUCTION_ENCODING` env (`json` |
+  `cbor`; absent or unknown falls back to json — a bad value never fails a
+  session), one encoding per session's life, never per frame. It crosses as an
+  env, never as an argv: fifo-shaped spawn specs pass exactly the author's
+  own arguments, and a runtime-appended argv would break the author's arity.
+- **Budgets and the driver** (`session.rs`, `supervise.rs`): handshake and
+  writes always carry a budget (defaults 5s; a write stall = the frame did
+  not land — a host keeping a cursor must not advance it). Reads have two
+  forms on purpose: the handshake and peer probes budget their read, the
+  driver loop reads with NONE — a streaming guest may legitimately stay
+  silent for long stretches, and a stalled peer stalls only itself. The
+  select loop runs two live sources (the host's event frames + the child's
+  stdout); a failed write ends the session rather than silently losing
+  frames. A constant-backoff supervisor reaps and respawns.
+- **The guest face** (`induction-guest`): the `Guest` builder (`.on` /
+  `.on_wildcard` / `.hook` / `.storage` — declaration IS schema, and the
+  phase gate is structural: post-run registration is unrepresentable), a
+  typed `Ctx` mirroring the ctx arms 1:1, and the producer guard table
+  (exhaustion is terminal — the producer writes `done`).
+- **The host face**: the `HostOps` trait and `route_frame` — codec- and
+  transport-independent arm dispatch with ONE home, so each host shapes its
+  own codec on top (WS id-paired, pipe in-band).
+
+## Can stdout carry binary? (CBOR)
+
+Yes — CBOR is a shipped encoding, not an aspiration. `CborCodec` writes
+`ciborium` documents straight to stdout and reads stdin the same way. CBOR is
+**self-delimiting**: each document carries its own length information, so the
+parser knows where it ends — no newline framing (that is the JSON mode's
+device) and no length prefix. Documents are simply written back to back. The
+host declares `Encoding::Cbor` (crossing to the child via the env), both
+sides use the same codec. For a high-frequency small-frame stream (token
+deltas), CBOR skips the per-frame JSON quoting/escaping overhead.
+
 ## Tests
 
 ```
