@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 /// Serve one guest line and flatten it to "the line to write back, or nothing".
 async fn serve(line: &str, ops: &dyn HostOps) -> String {
     match route_line(ops, line).await {
-        Routed::Reply(r) => r,
+        Routed::Reply(r) => r.to_line(),
         _ => String::new(),
     }
 }
@@ -264,12 +264,12 @@ async fn a_real_child_handshakes_and_answers() {
     let reply = induction_host::route_line(&Stub, &line).await;
     match reply {
         induction_host::Routed::Reply(r) => {
-            assert!(r.contains(r#""handler":"pages""#), "got {r}");
+            assert!(r.to_value().to_string().contains(r#""handler":"pages""#), "got {r:?}");
             assert!(
                 process
                     .session
                     .writer
-                    .write_line(&r, budgets.write)
+                    .write_line(&r.to_line(), budgets.write)
                     .await
             );
         }

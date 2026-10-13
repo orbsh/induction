@@ -420,14 +420,22 @@ pub enum GuestFrame {
     Result(ResultFrame),
 }
 
+/// Decode one guest frame from an already-parsed value (a CBOR host's
+/// decoded document, a test's json! literal). `None` = decode failure
+/// (version mismatch signal): an unrecognised shape is never silently
+/// absorbed.
+pub fn parse_guest_value(v: &Value) -> Option<GuestFrame> {
+    if let Some(h) = HostFrame::from_value(v) {
+        return Some(GuestFrame::Host(h));
+    }
+    ResultFrame::from_value(v).map(GuestFrame::Result)
+}
+
 /// Decode one guest line. `None` = decode failure (version mismatch signal):
 /// an unrecognised shape is never silently absorbed.
 pub fn parse_guest_line(line: &str) -> Option<GuestFrame> {
     let v: Value = serde_json::from_str(line).ok()?;
-    if let Some(h) = HostFrame::from_value(&v) {
-        return Some(GuestFrame::Host(h));
-    }
-    ResultFrame::from_value(&v).map(GuestFrame::Result)
+    parse_guest_value(&v)
 }
 
 /// Decode a `host_reply` line, if that is what it is.

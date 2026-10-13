@@ -57,7 +57,8 @@ pub mod session;
 pub mod supervise;
 
 pub use induction_protocol::{Arm, CallFrame, Encoding, FrameKind, InvokeCall, Reply};
-pub use ops::{HostOps, OpsFuture, Routed, route_line};
+pub use induction_protocol::parse_guest_value;
+pub use ops::{HostOps, OpsFuture, Routed, route_frame, route_line};
 pub use process::{Process, Spec, spawn};
 pub use session::{Budgets, Reader, Session, Writer};
 pub use supervise::{

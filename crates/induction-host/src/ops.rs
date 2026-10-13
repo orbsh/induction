@@ -75,11 +75,14 @@ fn declined<'a>(arm: &'static str) -> OpsFuture<'a> {
     Box::pin(async move { Err(format!("arm `{arm}` is not implemented by this host")) })
 }
 
-/// What routing one line off the guest's channel produced.
+/// What routing one guest frame produced.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Routed {
-    /// A ctx arm was served; write this `host_reply` line back.
-    Reply(String),
+    /// A ctx arm was served; write this reply back. The host shapes it for
+    /// its own codec — JSON-lines hosts `to_line()`, CBOR hosts `to_value()`
+    /// — the arm dispatch itself is codec-blind (one core for every
+    /// transport, below).
+    Reply(Reply),
     /// The arm carries no reply (`emit`) — nothing to write.
     Accepted,
     /// A request answer (`result` frame) — logged or consumed by the host.
@@ -89,13 +92,11 @@ pub enum Routed {
     DecodeFailed,
 }
 
-/// Serve one guest line: decode it, route the arm to `ops`, and hand back the
-/// reply line when the arm carries one.
-pub async fn route_line(ops: &dyn HostOps, line: &str) -> Routed {
-    let frame = match parse_guest_line(line) {
-        Some(f) => f,
-        None => return Routed::DecodeFailed,
-    };
+/// Serve one decoded guest frame: route the arm to `ops`, hand back the
+/// reply when the arm carries one. This is the codec-independent core —
+/// a JSON-lines host drives it through [`route_line`], a CBOR host decodes
+/// its documents to `Value`s and drives it directly.
+pub async fn route_frame(ops: &dyn HostOps, frame: GuestFrame) -> Routed {
     let host = match frame {
         GuestFrame::Result(r) => return Routed::Result(r.result),
         GuestFrame::Host(h) => h,
@@ -118,20 +119,29 @@ pub async fn route_line(ops: &dyn HostOps, line: &str) -> Routed {
             }
         }
         Arm::Invoke => match InvokeCall::from_host(&host.raw) {
-            Some(call) => Routed::Reply(ops.invoke(&call).await.into_reply().to_line()),
-            None => Routed::Reply(Reply::error("invoke arm: undecodable payload").to_line()),
+            Some(call) => Routed::Reply(ops.invoke(&call).await.into_reply()),
+            None => Routed::Reply(Reply::error("invoke arm: undecodable payload")),
         },
-        Arm::Store => Routed::Reply(ops.store(host.op.as_ref().unwrap_or(&Value::Null)).await.into_reply().to_line()),
+        Arm::Store => Routed::Reply(ops.store(host.op.as_ref().unwrap_or(&Value::Null)).await.into_reply()),
         Arm::IterateStart | Arm::IterateNext | Arm::IterateDispose => {
-            Routed::Reply(ops.iterate(host.arm, &host.args).await.into_reply().to_line())
+            Routed::Reply(ops.iterate(host.arm, &host.args).await.into_reply())
         }
-        Arm::TimerRegister => Routed::Reply(ops.timer_register(&host.args).await.into_reply().to_line()),
-        Arm::TimerCancel => Routed::Reply(ops.timer_cancel(&host.args).await.into_reply().to_line()),
-        Arm::QueueDepth => Routed::Reply(ops.queue_depth(&host.args).await.into_reply().to_line()),
+        Arm::TimerRegister => Routed::Reply(ops.timer_register(&host.args).await.into_reply()),
+        Arm::TimerCancel => Routed::Reply(ops.timer_cancel(&host.args).await.into_reply()),
+        Arm::QueueDepth => Routed::Reply(ops.queue_depth(&host.args).await.into_reply()),
         Arm::QueueSkipToHead => {
-            Routed::Reply(ops.queue_skip_to_head(&host.args).await.into_reply().to_line())
+            Routed::Reply(ops.queue_skip_to_head(&host.args).await.into_reply())
         }
-        Arm::Schema => Routed::Reply(ops.schema().await.into_reply().to_line()),
+        Arm::Schema => Routed::Reply(ops.schema().await.into_reply()),
+    }
+}
+
+/// Serve one guest line: decode it, route the arm to `ops`, and hand back the
+/// reply when the arm carries one. The JSON-lines form of [`route_frame`].
+pub async fn route_line(ops: &dyn HostOps, line: &str) -> Routed {
+    match parse_guest_line(line) {
+        Some(frame) => route_frame(ops, frame).await,
+        None => Routed::DecodeFailed,
     }
 }
 

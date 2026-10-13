@@ -41,7 +41,7 @@ pub mod schema;
 pub use encoding::{ENCODING_ENV, Encoding};
 pub use frame::{
     Arm, CallFrame, FrameKind, GuestFrame, HostFrame, InvokeCall, Reply, ResultFrame,
-    parse_guest_line, parse_host_reply,
+    parse_guest_line, parse_guest_value, parse_host_reply,
 };
 pub use schema::{Hello, SCHEMA_EVENT, Schema, initialize_line};
 

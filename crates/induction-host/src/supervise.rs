@@ -66,7 +66,7 @@ where
                 match line {
                     Some(line) => match route_line(ops, &line).await {
                         Routed::Reply(reply) => {
-                            if !writer.write_line(&reply, budgets.write).await {
+                            if !writer.write_line(&reply.to_line(), budgets.write).await {
                                 return Outcome::WriteStalled;
                             }
                         }

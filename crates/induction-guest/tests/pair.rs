@@ -128,8 +128,11 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
         Routed::Reply(r) => r,
         other => panic!("expected a host arm, got {other:?}"),
     };
-    assert!(reply.contains(r#""verb":"pages""#), "the guest used the verb spelling: {reply}");
-    assert!(process.session.writer.write_line(&reply, b.write).await);
+    assert!(
+        reply.to_value().to_string().contains(r#""verb":"pages""#),
+        "the guest used the verb spelling: {reply:?}"
+    );
+    assert!(process.session.writer.write_line(&reply.to_line(), b.write).await);
     let line = process.session.reader.next_line(b.read).await.expect("answer");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => {
