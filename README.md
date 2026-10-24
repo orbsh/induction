@@ -138,10 +138,11 @@ deltas), CBOR skips the per-frame JSON quoting/escaping overhead.
 cargo test --workspace
 ```
 
-31 tests: the wire contract (decode strictness, arm vocabulary, reply shapes,
-schema forms), in-memory session behaviour (handshake, budgets, write stalls,
-driver outcomes), two live-child process tests (spawn + PDEATHSIG + handshake +
-round trip + ctx routing + iterate rounds), and a doctest.
+33 tests plus a doctest: the wire contract (decode strictness, arm vocabulary,
+reply shapes, schema forms), in-memory session behaviour (handshake, budgets,
+write stalls, driver outcomes), two live-child process tests (spawn + PDEATHSIG
++ handshake + round trip + ctx routing + iterate rounds), and the minimal-host
+doctest.
 
 The live tests spawn real children. Each lives in the package that owns the
 fixture binary — cargo builds a package's own bins for its integration tests and
@@ -150,6 +151,44 @@ can never run against a stale fixture. Fixture bin names are distinct across
 packages (`raw_guest` in `induction-host`, `loop_guest` in `induction-guest`):
 two bins sharing a name across packages made `CARGO_BIN_EXE` pick the wrong
 binary.
+
+## The panic surface
+
+The workspace denies the escape hatches instead of trusting review. In the root
+manifest, applied through each member's `[lints] workspace = true`:
+
+```
+clippy::unwrap_used       clippy::expect_used         clippy::panic
+clippy::todo              clippy::unimplemented       clippy::unreachable
+clippy::unwrap_in_result  clippy::panic_in_result_fn  clippy::indexing_slicing
+```
+
+What each lint actually covers decides whether the gate is a wall or a curtain:
+`panic` catches `panic!` only — `todo!`, `unimplemented!` and `unreachable!` are
+three separate lints, and no clippy lint sees `assert!` at all. `unwrap_or*` is
+not flagged, because it cannot panic. Tests keep the vocabulary: unit tests
+through one `#![cfg_attr(test, allow(..))]` per crate root, and the `tests/`
+files through the same list at their own root — a `tests/` file is its own
+crate, so `cfg(test)` is false there.
+
+Two hatches therefore remain in production code, both declared rather than
+discovered in a crash dump:
+
+- **Three `assert!`s in `induction-guest`'s builders** — `on` refuses a
+  `__`-prefixed event, `on_wildcard` requires the `prefix.*` form, `hook`
+  accepts only `__sleep`/`__wake`. The input is the extension author's own
+  registration code, so these are startup failures with a message rather than
+  runtime error paths. No lint can gate them (see above), and a fallible
+  builder chain would push `?` into every extension for a check that can only
+  fire on a typo — a review rule, kept deliberately.
+- **One `unsafe` block** — `prctl(PR_SET_PDEATHSIG)` in `pre_exec`, so a dead
+  host never orphans its extensions. `unsafe_code = "deny"` is workspace-wide
+  and the single site carries a commented `#[allow(unsafe_code)]`.
+
+Everything else on the surface is translation: `CallFrame::iterate` takes an
+`IterateKind` instead of a `FrameKind`, so a `call`-shaped stream frame is
+unrepresentable rather than debug-asserted away in release builds, and the wire
+constructors fill a JSON object field by field instead of indexing into it.
 
 ## Status
 

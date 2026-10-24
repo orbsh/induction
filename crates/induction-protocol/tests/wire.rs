@@ -6,9 +6,26 @@
 //! cases were its baseline) and extended to the shapes both shipped
 //! implementations put on the wire.
 
+// Tests are allowed the unwrap/panic vocabulary the library targets are
+// denied: a panicking test is a failing test with a stack trace. A `tests/`
+// file is its own crate, so `cfg(test)` is false here — the allow is
+// unconditional, and it is the same set the crate root grants its unit tests.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::unwrap_in_result,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing
+)]
+
 use induction_protocol::{
-    Arm, CallFrame, Encoding, FrameKind, GuestFrame, Hello, HostFrame, InvokeCall, PROTOCOL, Reply,
-    ResultFrame, SCHEMA_EVENT, Schema, initialize_line, parse_guest_line, parse_host_reply,
+    Arm, CallFrame, Encoding, FrameKind, GuestFrame, Hello, HostFrame, InvokeCall, IterateKind,
+    PROTOCOL, Reply, ResultFrame, SCHEMA_EVENT, Schema, initialize_line, parse_guest_line,
+    parse_host_reply,
 };
 
 // ======================== handshake ========================
@@ -81,9 +98,9 @@ fn iterate_frames_carry_kind_op_and_stream_id() {
     // The shipped host writes `op` beside `kind`; JSON itself compares equal
     // regardless of key order, so this asserts the set, not the order.
     for (kind, tag) in [
-        (FrameKind::IterateStart, "start"),
-        (FrameKind::IterateNext, "next"),
-        (FrameKind::IterateDispose, "dispose"),
+        (IterateKind::Start, "start"),
+        (IterateKind::Next, "next"),
+        (IterateKind::Dispose, "dispose"),
     ] {
         let f = CallFrame::iterate(1, kind, "list_pages", serde_json::json!(null), "s1");
         let v: serde_json::Value = serde_json::from_str(&f.to_line()).unwrap();
@@ -94,10 +111,25 @@ fn iterate_frames_carry_kind_op_and_stream_id() {
 }
 
 #[test]
+fn iterate_kind_converts_both_ways_and_rejects_call() {
+    // The inbound direction is what a carrier holding a decoded `FrameKind`
+    // needs (effector maps its own `StreamOp` through it); the outbound one is
+    // what `CallFrame::iterate` uses. `Call` is a decode-failure-free value
+    // that still must not become a stream kind — it comes back as the error.
+    for kind in IterateKind::ALL {
+        let frame_kind = FrameKind::from(kind);
+        assert!(IterateKind::try_from(frame_kind).is_ok());
+        assert_eq!(frame_kind.as_str(), kind.as_str());
+        assert!(frame_kind.op_tag().is_some());
+    }
+    assert_eq!(IterateKind::try_from(FrameKind::Call), Err(FrameKind::Call));
+}
+
+#[test]
 fn request_frames_round_trip_and_reject_junk() {
     let f = CallFrame::iterate(
         3,
-        FrameKind::IterateNext,
+        IterateKind::Next,
         "list_pages",
         serde_json::json!({}),
         "s1",

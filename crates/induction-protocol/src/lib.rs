@@ -34,13 +34,29 @@
 //! Decode is strict everywhere: an unrecognised discriminator is a decode
 //! failure (the version-mismatch signal), never a silent partial accept.
 
+// Unit tests keep the unwrap/panic vocabulary the production targets are
+// denied: a panicking test is a failing test with a stack trace. `cfg(test)` is
+// only on for this crate's own test build — the `tests/` crates carry the same
+// allow at their own root.
+#![cfg_attr(test, allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::unwrap_in_result,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing
+))]
+
 pub mod encoding;
 pub mod frame;
 pub mod schema;
 
 pub use encoding::{ENCODING_ENV, Encoding};
 pub use frame::{
-    Arm, CallFrame, FrameKind, GuestFrame, HostFrame, InvokeCall, Reply, ResultFrame,
+    Arm, CallFrame, FrameKind, GuestFrame, HostFrame, InvokeCall, IterateKind, Reply, ResultFrame,
     parse_guest_line, parse_guest_value, parse_host_reply,
 };
 pub use schema::{Hello, SCHEMA_EVENT, Schema, initialize_line};

@@ -14,8 +14,32 @@
 //! - dispatch by event name, the iterate guard table, and the phase gate:
 //!   `on`/`hook` are BUILDER methods, so registration is structurally closed
 //!   once `run` begins — unrepresentable, not an error value.
+//! - declaration-time guards: `on` refuses a `__`-prefixed event, `on_wildcard`
+//!   requires the `prefix.*` form, and `hook` accepts only the two reserved
+//!   names. These three `assert!`s are the crate's ONLY panic sites, and they
+//!   stay assertions on purpose: the input is the extension author's own
+//!   registration code rather than external data, no clippy lint sees an
+//!   assertion at all (so they cannot be gated), and a fallible builder chain
+//!   would tax every extension with `?` for a check that can only fire on a
+//!   typo. README §"The panic surface" records the trade.
 //!
 //! Zero aura/effector dependencies: the protocol IS the ABI.
+
+// Unit tests keep the unwrap/panic vocabulary the production targets are
+// denied: a panicking test is a failing test with a stack trace. `cfg(test)` is
+// only on for this crate's own test build — the `tests/` crates carry the same
+// allow at their own root.
+#![cfg_attr(test, allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::unwrap_in_result,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing
+))]
 
 use std::collections::HashMap;
 use std::io::{BufRead, Write};

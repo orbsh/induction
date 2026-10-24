@@ -40,7 +40,8 @@
 //! }
 //!
 //! async fn drive(spec: Spec) {
-//!     let mut process = spawn(&spec).expect("spawn");
+//!     // No `.expect()`: a spawn failure is a returned outcome, not a crash.
+//!     let Ok(mut process) = spawn(&spec) else { return };
 //!     if process.session.handshake(Budgets::default().handshake).await.is_none() {
 //!         process.kill();
 //!         return;
@@ -51,13 +52,29 @@
 //! }
 //! ```
 
+// Unit tests keep the unwrap/panic vocabulary the production targets are
+// denied: a panicking test is a failing test with a stack trace. `cfg(test)` is
+// only on for this crate's own test build — the `tests/` crates carry the same
+// allow at their own root.
+#![cfg_attr(test, allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::unwrap_in_result,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing
+))]
+
 pub mod ops;
 pub mod process;
 pub mod session;
 pub mod supervise;
 
 pub use induction_protocol::parse_guest_value;
-pub use induction_protocol::{Arm, CallFrame, Encoding, FrameKind, InvokeCall, Reply};
+pub use induction_protocol::{Arm, CallFrame, Encoding, FrameKind, InvokeCall, IterateKind, Reply};
 pub use ops::{HostOps, OpsFuture, Routed, route_frame, route_line};
 pub use process::{Process, Spec, spawn};
 pub use session::{Budgets, Reader, Session, Writer};

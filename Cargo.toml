@@ -33,3 +33,21 @@ unsafe_code = "deny"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# The standing rule: a fallible step returns `Result`, an absent value returns
+# `Option`, and neither is short-circuited by a panic. deny (not forbid) so a
+# genuinely unreachable state can carry one narrow, commented allow.
+#
+# `panic` catches `panic!` ONLY: `todo!`/`unimplemented!`/`unreachable!` are
+# three separate lints, and NO clippy lint sees `assert!` at all. The three
+# declaration-time asserts in `induction-guest`'s builders are therefore a
+# review rule, declared in README §"The panic surface" rather than gated here.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+unwrap_in_result = "deny"
+panic_in_result_fn = "deny"
+indexing_slicing = "deny"

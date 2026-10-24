@@ -124,15 +124,49 @@ codec。对高频小帧流（token delta），CBOR 免去逐帧 JSON 的引号�
 cargo test --workspace
 ```
 
-31 项测试：wire 契约（decode 严格性、臂词汇、应答形状、schema 形态）、
-内存会话行为（握手、预算、写停滞、driver 结局）、两个真子进程测试
-（spawn + PDEATHSIG + 握手 + 往返 + ctx 路由 + iterate 轮次）、一个 doctest。
+33 项测试加一个 doctest：wire 契约（decode 严格性、臂词汇、应答形状、schema
+形态）、内存会话行为（握手、预算、写停滞、driver 结局）、两个真子进程测试
+（spawn + PDEATHSIG + 握手 + 往返 + ctx 路由 + iterate 轮次），以及最小宿主的
+doctest。
 
 真子进程测试 spawn 真实 child。各住在拥有 fixture 二进制的包里——cargo
 为包的集成测试构建自己的 bins 并导出 `CARGO_BIN_EXE_<name>`，无需手动构建
 步骤，测试也永远不会骑过期的 fixture。fixture bin 名跨包唯一
 （`induction-host` 的 `raw_guest`、`induction-guest` 的 `loop_guest`）：
 两个包的同名 bin 曾让 `CARGO_BIN_EXE` 拿错二进制。
+
+## panic 面
+
+工作区直接 deny 这些逃生通道，不指望 review 兜住。写在根 manifest，经各成员的
+`[lints] workspace = true` 生效：
+
+```
+clippy::unwrap_used       clippy::expect_used         clippy::panic
+clippy::todo              clippy::unimplemented       clippy::unreachable
+clippy::unwrap_in_result  clippy::panic_in_result_fn  clippy::indexing_slicing
+```
+
+每条 lint 实际覆盖什么，决定这道闸门是墙还是帘：`panic` 只抓 `panic!` ——
+`todo!`、`unimplemented!`、`unreachable!` 是三条独立 lint，而 `assert!` 没有
+任何 clippy lint 看得见；`unwrap_or*` 不报警，因为它不会 panic。测试保留这套
+词汇：单元测试靠每个 crate root 的一行 `#![cfg_attr(test, allow(..))]`，
+`tests/` 文件在各自文件根写同一份清单 —— `tests/` 文件是独立 crate，那里的
+`cfg(test)` 为假。
+
+于是生产代码里只剩两处敞口，且都是写明的，不是等崩溃转储再发现：
+
+- **`induction-guest` builder 里的三处 `assert!`** —— `on` 拒绝 `__` 前缀
+  事件，`on_wildcard` 要求 `prefix.*` 形态，`hook` 只收 `__sleep`/`__wake`。
+  输入是扩展作者自己的注册代码，所以它们是带消息的启动失败，不是运行期错误
+  路径。没有 lint 管得住（见上），而把 builder 链改成 fallible 会让每个扩展
+  为一次 typo 背上 `?` —— 这处按 review 规则保留。
+- **一处 `unsafe` 块** —— `pre_exec` 里的 `prctl(PR_SET_PDEATHSIG)`，宿主死了
+  不留孤儿子进程。`unsafe_code = "deny"` 是全工作区的，唯一站点带注释的
+  `#[allow(unsafe_code)]`。
+
+其余表面都是翻译：`CallFrame::iterate` 收 `IterateKind` 而不是 `FrameKind`，
+`call` 形状的流帧因此不可表达，而不是靠 debug 断言在 release 里消失；wire
+构造器逐字段填对象，不再对 `Value` 做索引。
 
 ## Status
 

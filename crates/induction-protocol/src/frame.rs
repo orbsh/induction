@@ -50,12 +50,61 @@ impl FrameKind {
         }
     }
 
-    pub fn is_iterate(self) -> bool {
-        self != FrameKind::Call
-    }
-
     pub fn parse(s: &str) -> Option<Self> {
         FrameKind::ALL.into_iter().find(|k| k.as_str() == s)
+    }
+}
+
+/// The three stream kinds — every [`FrameKind`] except [`FrameKind::Call`].
+///
+/// A separate type because [`CallFrame::iterate`] can do nothing sensible with
+/// `Call`: the frame it would build carries a `stream_id` and an `op` tag that
+/// the peer has no route for. So the kind is part of the constructor's TYPE
+/// rather than a runtime assertion. The `debug_assert!` this replaces was the
+/// wrong shape twice over — it disappears in a release build, and the failure
+/// it guarded (a malformed frame reaching the peer) is worse than the crash it
+/// would have prevented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IterateKind {
+    /// Open a stream.
+    Start,
+    /// Pull one envelope.
+    Next,
+    /// Abandon the stream (idempotent).
+    Dispose,
+}
+
+impl IterateKind {
+    pub const ALL: [IterateKind; 3] = [IterateKind::Start, IterateKind::Next, IterateKind::Dispose];
+
+    pub fn as_str(self) -> &'static str {
+        FrameKind::from(self).as_str()
+    }
+}
+
+impl From<IterateKind> for FrameKind {
+    fn from(kind: IterateKind) -> Self {
+        match kind {
+            IterateKind::Start => FrameKind::IterateStart,
+            IterateKind::Next => FrameKind::IterateNext,
+            IterateKind::Dispose => FrameKind::IterateDispose,
+        }
+    }
+}
+
+/// The fallible direction, for a consumer holding a decoded [`FrameKind`]:
+/// `Call` is not a stream kind, and the error hands back the offending kind so
+/// the caller can name it.
+impl TryFrom<FrameKind> for IterateKind {
+    type Error = FrameKind;
+
+    fn try_from(kind: FrameKind) -> Result<Self, Self::Error> {
+        match kind {
+            FrameKind::IterateStart => Ok(IterateKind::Start),
+            FrameKind::IterateNext => Ok(IterateKind::Next),
+            FrameKind::IterateDispose => Ok(IterateKind::Dispose),
+            FrameKind::Call => Err(FrameKind::Call),
+        }
     }
 }
 
@@ -83,38 +132,41 @@ impl CallFrame {
         }
     }
 
-    /// A stream request; `kind` must be an iterate kind.
+    /// A stream request. The kind is an iterate kind BY TYPE ([`IterateKind`]),
+    /// so no caller can build a `call`-shaped frame that carries a stream id.
     pub fn iterate(
         id: u64,
-        kind: FrameKind,
+        kind: IterateKind,
         event: impl Into<String>,
         args: Value,
         stream_id: impl Into<String>,
     ) -> Self {
-        debug_assert!(kind.is_iterate(), "iterate() takes an iterate kind");
         Self {
             id,
-            kind,
+            kind: kind.into(),
             event: event.into(),
             args,
             stream_id: Some(stream_id.into()),
         }
     }
 
+    /// The frame as a value. Built field by field rather than assembled and
+    /// then mutated by key: `Value`'s indexing operator is a panicking API, and
+    /// a wire constructor is not the place to rely on "this literal happens to
+    /// be an object".
     pub fn to_value(&self) -> Value {
-        let mut v = json!({
-            "id": self.id,
-            "kind": self.kind.as_str(),
-            "event": self.event,
-            "args": self.args,
-        });
+        let mut v = serde_json::Map::new();
+        v.insert("id".into(), Value::from(self.id));
+        v.insert("kind".into(), Value::from(self.kind.as_str()));
+        v.insert("event".into(), Value::from(self.event.as_str()));
+        v.insert("args".into(), self.args.clone());
         if let Some(op) = self.kind.op_tag() {
-            v["op"] = json!(op);
+            v.insert("op".into(), Value::from(op));
         }
         if let Some(s) = &self.stream_id {
-            v["stream_id"] = json!(s);
+            v.insert("stream_id".into(), Value::from(s.as_str()));
         }
-        v
+        Value::Object(v)
     }
 
     pub fn to_line(&self) -> String {

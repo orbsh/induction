@@ -4,12 +4,28 @@
 //!
 //! Run: `cargo test -p induction-host`.
 
+// Tests are allowed the unwrap/panic vocabulary the library targets are
+// denied: a panicking test is a failing test with a stack trace. A `tests/`
+// file is its own crate, so `cfg(test)` is false here — the allow is
+// unconditional, and it is the same set the crate root grants its unit tests.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::unwrap_in_result,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing
+)]
+
 use std::time::Duration;
 
 use induction_host::{
     Budgets, HostOps, InvokeCall, OpsFuture, Outcome, Routed, Spec, route_line, run_driver, spawn,
 };
-use induction_protocol::{CallFrame, FrameKind, GuestFrame, Reply, parse_guest_line};
+use induction_protocol::{CallFrame, GuestFrame, IterateKind, Reply, parse_guest_line};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -322,7 +338,7 @@ async fn a_real_child_handshakes_and_answers() {
             .session
             .writer
             .write_line(
-                &CallFrame::iterate(4, FrameKind::IterateStart, "list", json!(null), "s1")
+                &CallFrame::iterate(4, IterateKind::Start, "list", json!(null), "s1")
                     .to_line(),
                 budgets.write
             )

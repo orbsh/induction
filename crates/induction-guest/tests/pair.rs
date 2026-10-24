@@ -7,10 +7,26 @@
 //!
 //! Run: `cargo test -p induction-guest`.
 
+// Tests are allowed the unwrap/panic vocabulary the library targets are
+// denied: a panicking test is a failing test with a stack trace. A `tests/`
+// file is its own crate, so `cfg(test)` is false here — the allow is
+// unconditional, and it is the same set the crate root grants its unit tests.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::unwrap_in_result,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing
+)]
+
 use std::time::Duration;
 
 use induction_host::{Budgets, HostOps, InvokeCall, OpsFuture, Routed, Spec, route_line, spawn};
-use induction_protocol::{CallFrame, FrameKind, GuestFrame, parse_guest_line};
+use induction_protocol::{CallFrame, GuestFrame, IterateKind, parse_guest_line};
 use serde_json::{Value, json};
 
 /// A host whose only arm is `invoke`: the minimal complete host.
@@ -186,7 +202,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .session
             .writer
             .write_line(
-                &CallFrame::iterate(5, FrameKind::IterateStart, "list", Value::Null, "s1")
+                &CallFrame::iterate(5, IterateKind::Start, "list", Value::Null, "s1")
                     .to_line(),
                 b.write
             )
@@ -208,7 +224,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
                 .session
                 .writer
                 .write_line(
-                    &CallFrame::iterate(round, FrameKind::IterateNext, "list", Value::Null, "s1")
+                    &CallFrame::iterate(round, IterateKind::Next, "list", Value::Null, "s1")
                         .to_line(),
                     b.write
                 )
@@ -234,7 +250,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .session
             .writer
             .write_line(
-                &CallFrame::iterate(8, FrameKind::IterateNext, "list", Value::Null, "s1").to_line(),
+                &CallFrame::iterate(8, IterateKind::Next, "list", Value::Null, "s1").to_line(),
                 b.write
             )
             .await
