@@ -164,6 +164,13 @@ clippy::unwrap_in_result  clippy::panic_in_result_fn  clippy::indexing_slicing
   不留孤儿子进程。`unsafe_code = "deny"` 是全工作区的，唯一站点带注释的
   `#[allow(unsafe_code)]`。
 
+**这道闸门不是什么。** 它不是「绝不 panic」。本来就要停的程序——一次性调
+用、测试、编译期工具——用 `Result` 换不来任何东西：panic 只是更早地停，还带行
+号。常住进程也有这一面：对一件程序做不了任何事、只能由用户去修的事（它不会替你
+造的配置文件），`Result` 只让消息更友好。闸门针对的是相反的一类——serve 循环或
+帧处理路径把失败变成静默的错误数据——而那正是这套 crate 实际发布的代码。同一条
+规则写在 okm 的 ADR-0040 里，管的是存储侧。
+
 其余表面都是翻译：`CallFrame::iterate` 收 `IterateKind` 而不是 `FrameKind`，
 `call` 形状的流帧因此不可表达，而不是靠 debug 断言在 release 里消失；wire
 构造器逐字段填对象，不再对 `Value` 做索引。

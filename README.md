@@ -185,6 +185,15 @@ discovered in a crash dump:
   host never orphans its extensions. `unsafe_code = "deny"` is workspace-wide
   and the single site carries a commented `#[allow(unsafe_code)]`.
 
+**What the gate is not.** It is not "never panic". A program that stops either
+way — a one-shot invocation, a test, a build-time tool — has nothing to buy with
+`Result`: a panic is the earlier stop, with a line number. Even a long-lived
+process has that case, for a failure it can do nothing about (a missing config
+file it will not invent): `Result` there only makes the message kinder. The gate
+is aimed at the other class — a serve loop or a frame path turning a failure into
+silent wrong data — which is the code this crate actually ships. The same rule is
+written down for the storage side in okm's ADR-0040.
+
 Everything else on the surface is translation: `CallFrame::iterate` takes an
 `IterateKind` instead of a `FrameKind`, so a `call`-shaped stream frame is
 unrepresentable rather than debug-asserted away in release builds, and the wire
