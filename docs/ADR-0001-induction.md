@@ -239,3 +239,13 @@ Facts, not plans — all verified in the shipped code:
 - The `receives` per-handler object is today empty; it is the reserved place for
   tier/deadline declarations, which stay host policy until a guest needs to
   declare them.
+
+**Concurrent requests (ADR-0002).** A frame may carry an `id` and its reply carries
+the same one. The host routes a frame without awaiting it — it keeps the in-flight
+routes in a set it polls (writing each finished reply with its caller's id) and
+stops reading at 64 live routes — and the guest hands each reply to the call
+waiting on that id, so a resident guest takes a second request while the first is
+outstanding. The guest opts in: `Guest::concurrent(true)` runs its handlers
+concurrently; without it the handlers stay serial. The frame vocabulary above
+does not change for any of this — the pairing field was declared from the first
+slice.
