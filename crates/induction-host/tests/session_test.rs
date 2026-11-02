@@ -338,8 +338,7 @@ async fn a_real_child_handshakes_and_answers() {
             .session
             .writer
             .write_line(
-                &CallFrame::iterate(4, IterateKind::Start, "list", json!(null), "s1")
-                    .to_line(),
+                &CallFrame::iterate(4, IterateKind::Start, "list", json!(null), "s1").to_line(),
                 budgets.write
             )
             .await
@@ -426,4 +425,96 @@ async fn a_silent_guest_is_not_a_dead_guest() {
         Outcome::GuestGone
     );
     drop(tx);
+}
+
+// ==================== concurrent routing (ADR-0002) ====================
+
+/// A host whose `iterate` arm is slow for one stream and instant for the other.
+/// If the driver routed inline, the instant one could not answer before the slow
+/// one returned — which is exactly what this test measures.
+struct SlowStreams;
+
+impl HostOps for SlowStreams {
+    fn invoke<'a>(&'a self, _call: &'a InvokeCall) -> OpsFuture<'a> {
+        Box::pin(async move { Err("invoke is not this fixture's arm".to_string()) })
+    }
+
+    fn iterate<'a>(&'a self, _arm: induction_protocol::Arm, args: &'a Value) -> OpsFuture<'a> {
+        let who = args
+            .get("stream_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        Box::pin(async move {
+            if who == "slow" {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            Ok(json!({ "who": who }))
+        })
+    }
+}
+
+/// A guest that issues two tagged calls and reports the ids in the order their
+/// replies arrive.
+async fn two_call_guest(
+    side: tokio::io::DuplexStream,
+    seen: tokio::sync::mpsc::UnboundedSender<Option<u64>>,
+) {
+    let (r, mut w) = tokio::io::split(side);
+    let mut reader = BufReader::new(r);
+    let mut line = String::new();
+    let _ = reader.read_line(&mut line).await;
+    let _ = w
+        .write_all(b"{\"type\":\"hello\",\"name\":\"duo\",\"schema\":{\"receives\":{}}}\n")
+        .await;
+    // Two calls in flight at once, tagged 11 and 12. `slow` is written first.
+    for (id, stream) in [(11u64, "slow"), (12, "fast")] {
+        let frame = induction_protocol::HostFrame::new(
+            induction_protocol::Arm::IterateNext,
+            json!({ "stream_id": stream }),
+        )
+        .with_id(id);
+        let _ = w.write_all(format!("{}\n", frame.to_line()).as_bytes()).await;
+    }
+    for _ in 0..2 {
+        line.clear();
+        if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
+            break;
+        }
+        let v: Value = serde_json::from_str(line.trim()).unwrap();
+        let _ = seen.send(Reply::id_of(&v));
+    }
+}
+
+#[tokio::test]
+async fn the_driver_routes_two_guest_calls_at_once() {
+    let (host_side, guest_side) = tokio::io::duplex(4096);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let guest = tokio::spawn(two_call_guest(guest_side, tx));
+
+    let (r, w) = tokio::io::split(host_side);
+    let mut session = induction_host::Session::new(r, w);
+    let budgets = Budgets {
+        handshake: Duration::from_secs(1),
+        write: Duration::from_secs(1),
+        read: Duration::from_secs(1),
+    };
+    assert!(session.handshake(budgets.handshake).await.is_some());
+
+    let (events_tx, mut events) = tokio::sync::mpsc::channel::<CallFrame>(1);
+    let driver = tokio::spawn(async move { run_driver(&mut session, &SlowStreams, &mut events, budgets).await });
+
+    // The fast call's reply carries its own id and arrives first, even though
+    // the slow call was read first.
+    let first = rx.recv().await.expect("first reply");
+    let second = rx.recv().await.expect("second reply");
+    assert_eq!(
+        (first, second),
+        (Some(12), Some(11)),
+        "replies carry the caller's ids, and the slow route did not block the fast one"
+    );
+
+    drop(events_tx);
+    let _ = tokio::time::timeout(Duration::from_secs(2), guest).await;
+    let _ = driver.await;
 }

@@ -7,7 +7,10 @@
 
 这里没有任何持久化，也不是调度器、沙箱或服务注册表：事件、存储、策略都
 归宿主所有。命名与边界裁决、以及这套 crate 被抽出所要终结的分歧，见
-`docs/ADR-0001-induction.md`。（英文版 README 为权威版本；本文件是其
+`docs/ADR-0001-induction.md`。这条通道的并发裁决——"一次一帧曾经是环路的走法，
+不是协议的形状"——见 `docs/ADR-0002-concurrent-requests.md`，2026-11-02 接受：
+调用带 `id`，宿主并发路由，guest 用 `Guest::concurrent(true)` 选择让 handler
+并行。（英文版 README 为权威版本；本文件是其
 中文对照。）
 
 ## Crates

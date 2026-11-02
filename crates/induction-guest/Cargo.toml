@@ -40,3 +40,12 @@ name = "loop_guest"
 path = "tests/fixtures/loop_guest.rs"
 test = false
 doc = false
+
+# The ADR-0002 fixture: two handlers that each do a ctx round trip, so the pair
+# test can prove both that the guest runs them at once and that each waits on
+# the reply to its own id.
+[[bin]]
+name = "concurrent_guest"
+path = "tests/fixtures/concurrent_guest.rs"
+test = false
+doc = false

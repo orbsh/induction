@@ -262,6 +262,9 @@ impl Arm {
 /// payloads that use flat spellings stay decodable.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HostFrame {
+    /// The correlation id this call will be answered with (ADR-0002). `None` is
+    /// the pre-ADR wire form: the host answers the next reply frame regardless.
+    pub id: Option<u64>,
     pub arm: Arm,
     pub args: Value,
     pub op: Option<Value>,
@@ -275,6 +278,7 @@ impl HostFrame {
             host = json!({ "type": arm.as_str() });
         }
         Self {
+            id: None,
             arm,
             args,
             op: None,
@@ -285,10 +289,26 @@ impl HostFrame {
     /// The `store` arm: one okm Collection instruction as data.
     pub fn store(op: Value) -> Self {
         Self {
+            id: None,
             arm: Arm::Store,
             args: Value::Null,
             op: Some(op.clone()),
             raw: json!({ "type": "store", "op": op }),
+        }
+    }
+
+    /// Tag this call with the id its reply must carry. The id rides INSIDE the
+    /// host object beside `type`, so a pre-ADR host that reads `{"type", "args"}`
+    /// decodes it unchanged and simply answers without echoing it.
+    pub fn with_id(mut self, id: u64) -> Self {
+        self.set_id(id);
+        self
+    }
+
+    pub fn set_id(&mut self, id: u64) {
+        self.id = Some(id);
+        if let Some(obj) = self.raw.as_object_mut() {
+            obj.insert("id".to_string(), json!(id));
         }
     }
 
@@ -305,6 +325,7 @@ impl HostFrame {
         let host = v.get("host")?;
         let arm = Arm::parse(host.get("type")?.as_str()?)?;
         Some(Self {
+            id: host.get("id").and_then(Value::as_u64),
             arm,
             args: host.get("args").cloned().unwrap_or(Value::Null),
             op: host.get("op").cloned(),
@@ -411,6 +432,26 @@ impl Reply {
             Reply::Ok(v) => json!({ "host_reply": { "ok": v } }),
             Reply::Error(e) => json!({ "host_reply": { "error": e } }),
         }
+    }
+
+    /// The same frame, echoing the id of the call it answers (ADR-0002). The key
+    /// rides inside `host_reply` beside `ok`/`error`, so a pre-ADR guest decodes
+    /// it unchanged and simply ignores the correlation.
+    pub fn to_value_with_id(&self, id: u64) -> Value {
+        let mut v = self.to_value();
+        if let Some(hr) = v.get_mut("host_reply").and_then(Value::as_object_mut) {
+            hr.insert("id".to_string(), json!(id));
+        }
+        v
+    }
+
+    pub fn to_line_with_id(&self, id: u64) -> String {
+        self.to_value_with_id(id).to_string()
+    }
+
+    /// The correlation id a reply frame carries, if the host echoed one.
+    pub fn id_of(v: &Value) -> Option<u64> {
+        v.get("host_reply")?.get("id").and_then(Value::as_u64)
     }
 
     pub fn to_line(&self) -> String {

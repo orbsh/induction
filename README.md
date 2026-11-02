@@ -10,7 +10,11 @@ shared.
 Nothing here persists, and nothing here is a scheduler, a sandbox or a service
 registry: the host owns its events, its storage, its policies. See
 `docs/ADR-0001-induction.md` for the naming and boundary rulings, and for the
-divergences this crate set was extracted to end.
+divergences this crate set was extracted to end. The channel's concurrency
+ruling — one request at a time WAS the loop's choice, not the protocol's shape —
+is `docs/ADR-0002-concurrent-requests.md`, accepted 2026-11-02: calls carry an
+`id`, the host routes them at once, and a guest opts into running its handlers
+concurrently with `Guest::concurrent(true)`.
 
 ## Crates
 

@@ -143,9 +143,20 @@ pub async fn route_frame(ops: &dyn HostOps, frame: GuestFrame) -> Routed {
 /// Serve one guest line: decode it, route the arm to `ops`, and hand back the
 /// reply when the arm carries one. The JSON-lines form of [`route_frame`].
 pub async fn route_line(ops: &dyn HostOps, line: &str) -> Routed {
+    route_line_tagged(ops, line).await.1
+}
+
+/// [`route_line`], plus the correlation id the guest tagged the call with
+/// (ADR-0002). The driver echoes that id on the reply, which is what lets one
+/// guest have several calls in flight at once.
+pub async fn route_line_tagged(ops: &dyn HostOps, line: &str) -> (Option<u64>, Routed) {
     match parse_guest_line(line) {
-        Some(frame) => route_frame(ops, frame).await,
-        None => Routed::DecodeFailed,
+        Some(GuestFrame::Host(h)) => {
+            let id = h.id;
+            (id, route_frame(ops, GuestFrame::Host(h)).await)
+        }
+        Some(other) => (None, route_frame(ops, other).await),
+        None => (None, Routed::DecodeFailed),
     }
 }
 

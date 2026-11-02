@@ -56,17 +56,20 @@
 // denied: a panicking test is a failing test with a stack trace. `cfg(test)` is
 // only on for this crate's own test build — the `tests/` crates carry the same
 // allow at their own root.
-#![cfg_attr(test, allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::todo,
-    clippy::unimplemented,
-    clippy::unreachable,
-    clippy::unwrap_in_result,
-    clippy::panic_in_result_fn,
-    clippy::indexing_slicing
-))]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable,
+        clippy::unwrap_in_result,
+        clippy::panic_in_result_fn,
+        clippy::indexing_slicing
+    )
+)]
 
 pub mod ops;
 pub mod process;

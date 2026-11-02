@@ -7,13 +7,15 @@
 //! log window when a signal arrives) uses [`crate::session`] directly and keeps
 //! its own loop — the library does not force an event model on the host.
 
-use std::future::Future;
+use std::future::{Future, poll_fn};
+use std::pin::Pin;
+use std::task::Poll;
 use std::time::Duration;
 
 use induction_protocol::CallFrame;
 use tokio::sync::mpsc;
 
-use crate::ops::{HostOps, Routed, route_line};
+use crate::ops::{HostOps, Routed, route_line_tagged};
 use crate::process::{Process, Spec, spawn};
 use crate::session::{Budgets, Session};
 
@@ -35,10 +37,27 @@ pub enum Outcome {
     ShuttingDown,
 }
 
+/// One route in flight: the reply's correlation id (as the guest tagged the
+/// call) and what routing produced.
+type RouteFuture<'a> = Pin<Box<dyn Future<Output = (Option<u64>, Routed)> + Send + 'a>>;
+
+/// The in-flight set. A vector rather than a stream type on purpose: the driver
+/// polls it itself (see [`first_done`]) so no futures crate is needed and the
+/// routes keep borrowing `ops`.
+type InFlight<'a> = Vec<RouteFuture<'a>>;
+
 /// Drive one live session: deliver host frames, serve guest arms.
 ///
-/// Borrows of the read and write halves are disjoint by construction, which is
-/// what lets both sit in one `select!`.
+/// The guest's calls are routed CONCURRENTLY (ADR-0002): a frame starts a route
+/// future, the loop keeps reading, and each finished route is written with the
+/// id its caller tagged. Writes still have one owner — this loop — because a
+/// line is the unit on the wire, so two writers would interleave bytes rather
+/// than requests.
+///
+/// The driver keeps reading while fewer than [`MAX_INFLIGHT`] routes are live;
+/// past that it stops reading until one finishes. Without the cap a guest that
+/// never waits would grow the vector without bound, and the memory would be the
+/// host's, not the guest's.
 pub async fn run_driver<R, W>(
     session: &mut Session<R, W>,
     ops: &dyn HostOps,
@@ -49,40 +68,89 @@ where
     R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
 {
+    /// One step of the loop: a route finished, a host event arrived, or the
+    /// guest sent a line. Kept as a value so the select's arms never borrow the
+    /// in-flight vector twice.
+    enum Step {
+        Done((Option<u64>, Routed)),
+        Event(Option<CallFrame>),
+        Line(Option<String>),
+    }
+
     let Session { reader, writer } = session;
+    let mut inflight: InFlight<'_> = Vec::new();
     loop {
-        tokio::select! {
-            incoming = events.recv() => {
-                match incoming {
-                    Some(frame) => {
-                        if !writer.write_line(&frame.to_line(), budgets.write).await {
-                            return Outcome::WriteStalled;
-                        }
+        let any = !inflight.is_empty();
+        let room = inflight.len() < MAX_INFLIGHT;
+        let step = tokio::select! {
+            Some(done) = first_done(&mut inflight), if any => Step::Done(done),
+            incoming = events.recv() => Step::Event(incoming),
+            line = reader.next_frame(), if room => Step::Line(line),
+        };
+        match step {
+            Step::Done((id, routed)) => match routed {
+                // The id echoed here is the guest's, not a host sequence: the
+                // guest picked it and is waiting on exactly that one.
+                Routed::Reply(reply) => {
+                    let line = match id {
+                        Some(id) => reply.to_line_with_id(id),
+                        None => reply.to_line(),
+                    };
+                    if !writer.write_line(&line, budgets.write).await {
+                        return Outcome::WriteStalled;
                     }
-                    None => return Outcome::ShuttingDown,
                 }
-            }
-            line = reader.next_frame() => {
-                match line {
-                    Some(line) => match route_line(ops, &line).await {
-                        Routed::Reply(reply) => {
-                            if !writer.write_line(&reply.to_line(), budgets.write).await {
-                                return Outcome::WriteStalled;
-                            }
-                        }
-                        // `emit` carries no reply by contract; a `result` frame
-                        // is the guest answering a delivered call (a host with
-                        // no intercept plane has nothing to consume it with).
-                        Routed::Accepted | Routed::Result(_) => {}
-                        Routed::DecodeFailed => {
-                            eprintln!("[induction] undecodable guest frame: {line}");
-                        }
-                    },
-                    None => return Outcome::GuestGone,
+                // `emit` carries no reply by contract; a `result` frame is the
+                // guest answering a delivered call (a host with no intercept
+                // plane has nothing to consume it with).
+                Routed::Accepted | Routed::Result(_) => {}
+                Routed::DecodeFailed => eprintln!("[induction] undecodable guest frame"),
+            },
+            Step::Event(incoming) => match incoming {
+                Some(frame) => {
+                    if !writer.write_line(&frame.to_line(), budgets.write).await {
+                        return Outcome::WriteStalled;
+                    }
                 }
-            }
+                None => return Outcome::ShuttingDown,
+            },
+            Step::Line(line) => match line {
+                Some(line) => inflight.push(Box::pin(async move {
+                    route_line_tagged(ops, &line).await
+                })),
+                None => return Outcome::GuestGone,
+            },
         }
     }
+}
+
+/// How many guest calls the driver keeps in flight at once.
+const MAX_INFLIGHT: usize = 64;
+
+/// Poll every in-flight route and hand back the first that finished.
+///
+/// Hand-rolled because the workspace's dependency whitelist has no futures
+/// crate, and `JoinSet` would demand `'static` futures — these borrow `ops` for
+/// exactly as long as the driver lives. Every future is polled with the caller's
+/// waker, so a wake re-enters the select and lands here again.
+async fn first_done<'a, T>(
+    futs: &mut Vec<Pin<Box<dyn Future<Output = T> + Send + 'a>>>,
+) -> Option<T> {
+    poll_fn(|cx| {
+        let mut ready = None;
+        for (i, fut) in futs.iter_mut().enumerate() {
+            if let Poll::Ready(v) = fut.as_mut().poll(cx) {
+                ready = Some((i, v));
+                break;
+            }
+        }
+        let Some((i, v)) = ready else {
+            return Poll::Pending;
+        };
+        drop(futs.swap_remove(i));
+        Poll::Ready(Some(v))
+    })
+    .await
 }
 
 /// Spawn, handshake, drive. The whole life of one extension in one call —

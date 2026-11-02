@@ -26,7 +26,7 @@
 use std::time::Duration;
 
 use induction_host::{Budgets, HostOps, InvokeCall, OpsFuture, Routed, Spec, route_line, spawn};
-use induction_protocol::{CallFrame, GuestFrame, IterateKind, parse_guest_line};
+use induction_protocol::{CallFrame, GuestFrame, IterateKind, Reply, parse_guest_line};
 use serde_json::{Value, json};
 
 /// A host whose only arm is `invoke`: the minimal complete host.
@@ -202,8 +202,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .session
             .writer
             .write_line(
-                &CallFrame::iterate(5, IterateKind::Start, "list", Value::Null, "s1")
-                    .to_line(),
+                &CallFrame::iterate(5, IterateKind::Start, "list", Value::Null, "s1").to_line(),
                 b.write
             )
             .await
@@ -266,6 +265,89 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
         other => panic!("expected a result frame, got {other:?}"),
     }
 
+    process.kill();
+}
+
+/// ADR-0002, end to end: two requests, one process, and each handler waiting on
+/// the reply to its own call.
+///
+/// Both requests are written before either can be answered, so a guest that
+/// dispatches inline would answer `slow` first (and, before this change, would
+/// hand `fast` the answer written for `slow`). Two ctx calls are live at once
+/// here, which is also why the host must echo ids: the no-id fallback only
+/// resolves a SINGLE pending call, so an old host stalls both handlers and this
+/// test times out instead of passing on an accident.
+#[tokio::test]
+async fn two_requests_run_at_once_and_each_waits_on_its_own_reply() {
+    let spec = Spec::new(
+        "concurrent",
+        [env!("CARGO_BIN_EXE_concurrent_guest").to_string()],
+    );
+    let mut process = spawn(&spec).expect("spawn the concurrent fixture");
+    let b = budgets();
+    let hello = process
+        .session
+        .handshake(b.handshake)
+        .await
+        .expect("handshake");
+    assert!(hello.schema.receives("slow") && hello.schema.receives("fast"));
+
+    // Both requests land before the guest can answer either: `slow` arrives
+    // first but sleeps, and `fast` must not queue behind it.
+    for frame in [
+        CallFrame::call(1, "slow", Value::Null),
+        CallFrame::call(2, "fast", Value::Null),
+    ] {
+        assert!(
+            process
+                .session
+                .writer
+                .write_line(&frame.to_line(), b.write)
+                .await
+        );
+    }
+
+    let mut answered = Vec::new();
+    let mut call_ids = Vec::new();
+    while answered.len() < 2 {
+        let line = process
+            .session
+            .reader
+            .next_line(b.read)
+            .await
+            .expect("a frame from the guest");
+        match parse_guest_line(&line) {
+            Some(GuestFrame::Host(h)) => {
+                call_ids.push(h.id);
+                // Echo the id, exactly as the driver does.
+                let reply = Reply::ok(json!({ "verb": "probe", "who": h.args["who"].clone() }));
+                let line = match h.id {
+                    Some(id) => reply.to_line_with_id(id),
+                    None => reply.to_line(),
+                };
+                assert!(process.session.writer.write_line(&line, b.write).await);
+            }
+            Some(GuestFrame::Result(r)) => answered.push(
+                r.result["who"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
+            other => panic!("expected a result or a call, got {other:?}"),
+        }
+    }
+
+    assert_eq!(
+        answered,
+        vec!["fast".to_string(), "slow".to_string()],
+        "the later request finished first: the two handlers ran at once"
+    );
+    assert_eq!(call_ids.len(), 2, "one ctx call per handler");
+    assert!(
+        call_ids.iter().all(Option::is_some),
+        "every ctx call carried an id: {call_ids:?}"
+    );
+    assert_ne!(call_ids[0], call_ids[1], "the ids are distinct");
     process.kill();
 }
 
