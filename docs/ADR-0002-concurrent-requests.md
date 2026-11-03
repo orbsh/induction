@@ -49,8 +49,9 @@ protocol defect; both are the loop assuming it is alone.
 ## Decision
 
 **The channel carries concurrent requests, and `id` pairs them.** Three changes,
-in this order. None of them alters a frame's shape; exactly one of them adds a
-field, and that is step 2's, on the guest's own call envelope.
+in this order. None of them alters a frame's shape; they add two fields, both on
+the guest's own call envelope — the `id` the reply must echo (step 2) and the
+request the call belongs to (`call`, step 3).
 
 **1. Host: one route per request, one owner of the writer.** The read loop
 starts a route for each frame and keeps reading; a finished route's reply is
@@ -74,6 +75,15 @@ just cannot answer two of its calls at once.
 **3. Only then** may one booth serve two requests at once. Nothing else in the
 protocol moves: `iterate` pulls already address a `stream_id`, and concurrency is
 a property of the process, not of a stream.
+
+**A ctx frame names the request it serves (`host.call`).** The `id` above pairs a
+reply with its caller; it says nothing about WHICH request is being served, and a
+host that multiplexes several calls into one child has to know that: the ctx
+functions a handler reaches for belong to that handler's call (its scope, its
+bridge), and answering round A's tool call with round B's context is wrong in a
+way no error surfaces. So the guest stamps the request id it is serving onto every
+ctx call it writes. Absent (a serial guest, an older guest) the host falls back to
+the single armed call — unambiguous exactly while one call is in flight.
 
 **The alternative — declare FIFO reply ordering as part of the protocol — is
 rejected.** It would make every long call a stall for the whole session, which
@@ -117,9 +127,10 @@ format that has no business having one.
   gives each request its own thread. A reply without an id still resolves when
   exactly one call is pending: that is a pre-ADR host, and it is why the change is
   additive rather than breaking.
-- **Wire.** A guest's call is `{"host": {"type": …, "id": N}}`; the host answers
-  `{"host_reply": {"id": N, "ok"|"error": …}}`. Both keys are ignored by the
-  parsers that predate them.
+- **Wire.** A guest's ctx call is `{"host": {"type": …, "id": N, "call": R}}` —
+  `id` is the ctx call's own correlation id, `call` is the request the handler is
+  serving — and the host answers `{"host_reply": {"id": N, "ok"|"error": …}}`.
+  Every one of those keys is ignored by the parsers that predate it.
 - **Tests.** `two_requests_run_at_once_and_each_waits_on_its_own_reply` (guest
   crate, real process): two handlers, two live ctx calls, the LATER request
   answers FIRST, and each call carries a distinct id.

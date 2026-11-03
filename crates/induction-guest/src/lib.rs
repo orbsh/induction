@@ -77,9 +77,20 @@ use serde_json::Value;
 /// (the parent answers NOTHING by contract).
 pub struct Ctx<'a> {
     io: &'a Channel,
+    /// The request this ctx belongs to: stamped on every host call, so a host
+    /// running several of this process's handlers at once can tell which call a
+    /// ctx frame serves. A serial guest never needs it; a concurrent one cannot
+    /// be answered without it.
+    call: u64,
 }
 
 impl Ctx<'_> {
+    /// Send one host call, labelled with the request it belongs to.
+    fn send(&mut self, mut frame: HostFrame) -> anyhow::Result<Value> {
+        frame.set_call(self.call);
+        self.io.call(frame)
+    }
+
     /// `ctx.invoke` — the canonical (booth-call) spelling: target instance,
     /// handler, args.
     pub fn invoke(
@@ -89,7 +100,7 @@ impl Ctx<'_> {
         handler: &str,
         args: Value,
     ) -> anyhow::Result<Value> {
-        self.io.call(HostFrame::new(
+        self.send(HostFrame::new(
             Arm::Invoke,
             serde_json::json!({
                 "type": target_type, "key": target_key, "handler": handler, "args": args,
@@ -101,8 +112,9 @@ impl Ctx<'_> {
     /// directory (mudra's today) route this shape. One arm, two payload
     /// spellings; see ADR-0001.
     pub fn invoke_verb(&mut self, verb: &str, args: Value) -> anyhow::Result<Value> {
-        self.io.call(HostFrame {
+        self.send(HostFrame {
             id: None,
+            call: None,
             arm: Arm::Invoke,
             args: Value::Null,
             op: None,
@@ -122,7 +134,7 @@ impl Ctx<'_> {
     /// `ctx.store` — one collection instruction as data (the guest never parses
     /// its semantics; the host resolves it against the declared collections).
     pub fn store(&mut self, op: Value) -> anyhow::Result<Value> {
-        self.io.call(HostFrame::store(op))
+        self.send(HostFrame::store(op))
     }
 
     /// `ctx.iterate.start` — open a stream on a sibling booth (the consumer
@@ -135,7 +147,7 @@ impl Ctx<'_> {
         handler: &str,
         args: Value,
     ) -> anyhow::Result<Value> {
-        self.io.call(HostFrame::new(
+        self.send(HostFrame::new(
             Arm::IterateStart,
             serde_json::json!({
                 "type": target_type, "key": target_key, "handler": handler, "args": args,
@@ -146,7 +158,7 @@ impl Ctx<'_> {
     /// `ctx.iterate.next` — pull one envelope round by stream id. The realm's
     /// registry names the producer; the id is the route.
     pub fn iterate_next(&mut self, stream_id: &str) -> anyhow::Result<Value> {
-        self.io.call(HostFrame::new(
+        self.send(HostFrame::new(
             Arm::IterateNext,
             serde_json::json!({ "stream_id": stream_id }),
         ))
@@ -155,7 +167,7 @@ impl Ctx<'_> {
     /// `ctx.iterate.dispose` — abandon a stream (idempotent per the realm's
     /// routing entry; the mandatory dual of Start). No envelope reply.
     pub fn iterate_dispose(&mut self, stream_id: &str) -> anyhow::Result<Value> {
-        self.io.call(HostFrame::new(
+        self.send(HostFrame::new(
             Arm::IterateDispose,
             serde_json::json!({ "stream_id": stream_id }),
         ))
@@ -163,12 +175,12 @@ impl Ctx<'_> {
 
     /// `ctx.schema` — the persisted declaration copy held by the host.
     pub fn schema(&mut self) -> anyhow::Result<Value> {
-        self.io.call(HostFrame::new(Arm::Schema, Value::Null))
+        self.send(HostFrame::new(Arm::Schema, Value::Null))
     }
 
     /// `ctx.timer.register` → the timer id.
     pub fn timer_register(&mut self, at_ms: u64, tag: &str) -> anyhow::Result<u64> {
-        let v = self.io.call(HostFrame::new(
+        let v = self.send(HostFrame::new(
             Arm::TimerRegister,
             serde_json::json!({ "at_ms": at_ms, "tag": tag }),
         ))?;
@@ -177,7 +189,7 @@ impl Ctx<'_> {
 
     /// `ctx.timer.cancel` — idempotent (unknown = already fired).
     pub fn timer_cancel(&mut self, timer_id: u64) -> anyhow::Result<()> {
-        self.io.call(HostFrame::new(
+        self.send(HostFrame::new(
             Arm::TimerCancel,
             serde_json::json!({ "timer_id": timer_id }),
         ))?;
@@ -186,7 +198,7 @@ impl Ctx<'_> {
 
     /// `ctx.queue.depth` — the backlog point-read.
     pub fn queue_depth(&mut self, event: &str) -> anyhow::Result<u64> {
-        let v = self.io.call(HostFrame::new(
+        let v = self.send(HostFrame::new(
             Arm::QueueDepth,
             Value::String(event.into()),
         ))?;
@@ -196,7 +208,7 @@ impl Ctx<'_> {
     /// `ctx.queue.skip_to_head` — the relief valve (a discarded backlog never
     /// revives).
     pub fn queue_skip_to_head(&mut self, event: &str) -> anyhow::Result<()> {
-        self.io.call(HostFrame::new(
+        self.send(HostFrame::new(
             Arm::QueueSkipToHead,
             Value::String(event.into()),
         ))?;
@@ -659,7 +671,10 @@ struct Worker {
 
 impl Worker {
     fn handle(&self, req: CallFrame) {
-        let ctx = &mut Ctx { io: &self.channel };
+        let ctx = &mut Ctx {
+            io: &self.channel,
+            call: req.id,
+        };
         let result = match req.kind {
             FrameKind::Call | FrameKind::IterateStart => {
                 self.run_handler(ctx, &req.event, req.args.clone(), &req.stream_id)

@@ -265,6 +265,13 @@ pub struct HostFrame {
     /// The correlation id this call will be answered with (ADR-0002). `None` is
     /// the pre-ADR wire form: the host answers the next reply frame regardless.
     pub id: Option<u64>,
+    /// The REQUEST this host call belongs to — the id of the call frame the
+    /// handler is serving. A concurrent guest runs several handlers at once in
+    /// one process, so the host cannot attribute a ctx frame by "the call in
+    /// flight"; the guest names it. `None` is the serial wire form (one call in
+    /// flight makes attribution trivial, and a host that never multiplexes may
+    /// keep answering the sole outstanding call).
+    pub call: Option<u64>,
     pub arm: Arm,
     pub args: Value,
     pub op: Option<Value>,
@@ -279,6 +286,7 @@ impl HostFrame {
         }
         Self {
             id: None,
+            call: None,
             arm,
             args,
             op: None,
@@ -290,6 +298,7 @@ impl HostFrame {
     pub fn store(op: Value) -> Self {
         Self {
             id: None,
+            call: None,
             arm: Arm::Store,
             args: Value::Null,
             op: Some(op.clone()),
@@ -312,6 +321,21 @@ impl HostFrame {
         }
     }
 
+    /// Say which request this ctx call belongs to (a concurrent guest's handlers
+    /// run side by side in one process). Rides inside the host object beside
+    /// `type`, so a host that does not multiplex reads it and ignores it.
+    pub fn with_call(mut self, call: u64) -> Self {
+        self.set_call(call);
+        self
+    }
+
+    pub fn set_call(&mut self, call: u64) {
+        self.call = Some(call);
+        if let Some(obj) = self.raw.as_object_mut() {
+            obj.insert("call".to_string(), json!(call));
+        }
+    }
+
     pub fn to_value(&self) -> Value {
         json!({ "host": self.raw })
     }
@@ -326,6 +350,7 @@ impl HostFrame {
         let arm = Arm::parse(host.get("type")?.as_str()?)?;
         Some(Self {
             id: host.get("id").and_then(Value::as_u64),
+            call: host.get("call").and_then(Value::as_u64),
             arm,
             args: host.get("args").cloned().unwrap_or(Value::Null),
             op: host.get("op").cloned(),

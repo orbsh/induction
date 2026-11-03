@@ -28,6 +28,8 @@ guest 是一个**驻留**进程，而且常常是整个 booth 类型共用的一
 
 **3. 只有到这一步**，一个 booth 才能同时服务两个请求。协议里别的东西一件不动：`iterate` 的 pull 本来就按 `stream_id` 寻址，并发是进程的属性，不是流的属性。
 
+**ctx 帧标明它服务的是哪个请求（`host.call`）。** 上面那个 `id` 只把回应绑到它的调用方，并不说明**正在服务哪个请求**；而把一个 child 复用到多个调用的宿主必须知道这件事：handler 伸手去用的 ctx 函数属于那次调用的 call（它的作用域、它的 bridge），用 B 轮的上下文回答 A 轮的工具调用，是没有任何报错会浮现的错误。所以 guest 在写每一帧 ctx 调用时，盖上它正在服务的请求 id。缺失时（串行 guest、更老的 guest）宿主流回退到唯一被武装的那次调用——只在恰好一个调用在飞时无歧义，而那正是这类 guest 发帧的时候。
+
 **另一条路——把"回应按 FIFO 顺序"写进协议——被否掉。** 那等于让每一次长调用都变成整个会话的停摆，与"驻留"的含义相悖；也等于把一个调度策略塞进一个本不该有策略的格式里。
 
 ## Consequences
@@ -42,7 +44,7 @@ guest 是一个**驻留**进程，而且常常是整个 booth 类型共用的一
 
 - **host。** `run_driver` 自己在同一个循环里轮询 in-flight 路由（不引 futures crate，也不需要 `'static`），每条完成的回应都带上 `route_line_tagged` 从请求里取回的 id 写出。同时在飞的路由到 64 条就暂停读取——不等待的 guest 只会卡住自己，不会撑大宿主的内存。写端只有两个来源：回应与宿主事件帧，一个所有者。
 - **guest。** 运行循环从不执行 handler：它答握手、把回应交给等这个 id 的调用（互斥量后面的 `HashMap<u64, Sender<Reply>>`）、把请求派给 worker。串行 guest（默认）只有**一个** worker 线程、按到达顺序；`Guest::concurrent(true)` 让每个请求各占一个线程。没有 id 的回应在只有一个调用在等时仍然能派出去——那是 ADR 之前的宿主，也是这次改动是加法而非破坏的原因。
-- **线上形状。** guest 的调用是 `{"host": {"type": …, "id": N}}`，宿主回应 `{"host_reply": {"id": N, "ok"|"error": …}}`。两个键在旧解析器里都被忽略。
+- **线上形状。** guest 的 ctx 调用是 `{"host": {"type": …, "id": N, "call": R}}`——`id` 是这次 ctx 调用自己的配对 id，`call` 是 handler 正在服务的那个请求——宿主回应 `{"host_reply": {"id": N, "ok"|"error": …}}`。这些键在认得它们之前的解析器里都被忽略。
 - **测试。** `two_requests_run_at_once_and_each_waits_on_its_own_reply`（guest crate，真实进程）：两个 handler、两个在飞的 ctx 调用，**后**到的请求先答完，且两次调用各带不同的 id。`the_driver_routes_two_guest_calls_at_once`（host crate，duplex）：慢路由不拖住快路由，两条回应都回显各自调用方的 id。
 
 ## Not decided here
