@@ -38,14 +38,13 @@ has no vocabulary at all: a guest's ctx call is
 `{"host_reply": {"ok": …}}` — no id on either side, because until now neither
 side could have two calls in flight.
 
-**The case that surfaced it.** Gravity's turn opens a second LLM stream while the
-first is still live — the user's answer and a compression pass over the same
-immutable prefix (gravity PLAN Phase 3). Both streams are pulled from one
-provider process, one frame per pull, alternating. Under the current loop a
-second `iterate_start` is not even READ until the first pull returns, and if it
-were, the guest's reply reader would hand stream B's pull the answer written for
-stream A. Neither failure is a protocol defect; both are the loop assuming it is
-alone.
+**The case that surfaced it.** Gravity's turn serves several requests at once: a
+compression pass runs on its own thread while the user's answer streams, and a
+turn that long outlives a device's next keystroke has to accept the next round
+while it is still running. Under the old loop a second request was not even READ
+until the first one's reply returned, and if it were, the guest's reply reader
+would hand request B the answer written for request A. Neither failure is a
+protocol defect; both are the loop assuming it is alone.
 
 ## Decision
 
