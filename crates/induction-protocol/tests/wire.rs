@@ -312,13 +312,12 @@ fn schema_event_name_is_frozen() {
 #[test]
 fn schema_rich_form_round_trips_and_subscription_is_exact() {
     let s = Schema {
-        receives: [("a:b".to_string(), serde_json::json!({}))]
+        receives: [("a:b".to_string(), serde_json::json!({"key": "user_id", "auth": true}))]
             .into_iter()
             .collect(),
         wildcard_receives: vec!["a:*".into()],
         hooks: vec!["__wake".into()],
         storage: Some(serde_json::json!({"collections": {}})),
-        auth: Some(serde_json::json!({"a:b": true})),
     };
     let back = Schema::from_value(&s.to_value()).unwrap();
     assert_eq!(back, s);
@@ -328,6 +327,11 @@ fn schema_rich_form_round_trips_and_subscription_is_exact() {
     assert_eq!(back.wildcard_receives, vec!["a:*".to_string()]);
     // storage is the ctx.store plan source, carried verbatim
     assert!(back.storage.is_some());
+    // A subscription's OWN knobs ride its entry — one object per event, so the event name is
+    // written once (there is no top-level `auth` table to disagree with it).
+    let entry = back.receives.get("a:b").expect("a:b declared");
+    assert_eq!(entry["auth"], true);
+    assert_eq!(entry["key"], "user_id");
 }
 
 #[test]

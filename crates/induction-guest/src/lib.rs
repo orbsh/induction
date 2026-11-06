@@ -395,7 +395,6 @@ struct Registry {
     hooks: Vec<String>,
     wildcards: Vec<String>,
     storage: Option<Value>,
-    auth: Option<Value>,
 }
 
 impl Registry {
@@ -410,7 +409,6 @@ impl Registry {
             wildcard_receives: self.wildcards.clone(),
             hooks: self.hooks.clone(),
             storage: self.storage.clone(),
-            auth: self.auth.clone(),
         }
     }
 }
@@ -443,7 +441,6 @@ impl Guest {
                 hooks: Vec::new(),
                 wildcards: Vec::new(),
                 storage: None,
-                auth: None,
             },
         }
     }
@@ -516,14 +513,6 @@ impl Guest {
     /// in the schema.
     pub fn storage(mut self, schema: Value) -> Self {
         self.registry.storage = Some(schema);
-        self
-    }
-
-    /// Declare the per-handler auth block, carried verbatim in the
-    /// schema (the host's gate reads `auth.<handler>`; the guest
-    /// declares which handlers need a bound user).
-    pub fn auth(mut self, auth: Value) -> Self {
-        self.registry.auth = Some(auth);
         self
     }
 
