@@ -1,6 +1,6 @@
 //! Wire-contract tests. The decode/shape half of the contract is testable
 //! without a pipe — that is exactly what this file is for (the loop itself is
-//! covered in `induction-host`'s session tests).
+//! covered in `induction-host`'s link tests).
 //!
 //! Migrated from mudra's `host_test.rs` (the hello-decode and subscription
 //! cases were its baseline) and extended to the shapes both shipped

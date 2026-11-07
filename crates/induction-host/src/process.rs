@@ -2,7 +2,7 @@
 //!
 //! No code upload, no introspection pass, no code store: the spec is an argv
 //! (plus an env), and the guest declares its own schema at load
-//! ([`crate::session::Session::handshake`]) or answers the pull
+//! ([`crate::link::Link::handshake`]) or answers the pull
 //! (`interface_schema`). That is what makes this shape cheap — and why a host
 //! cannot know anything about an extension before it runs, by design.
 //!
@@ -13,8 +13,8 @@
 //!
 //! Transport note: this adapter is ONE implementation of the byte channel. A
 //! host that reaches its guest another way (a WebSocket-backed duplex, an
-//! in-memory pair in tests) drives the same [`crate::session`] types — the
-//! session codecs never learn where the bytes come from.
+//! in-memory pair in tests) drives the same [`crate::link`] types — the
+//! link codecs never learn where the bytes come from.
 
 use std::io;
 use std::os::unix::process::CommandExt as _;
@@ -23,7 +23,7 @@ use std::process::Stdio;
 use induction_protocol::Encoding;
 use tokio::process::{Child as TokioChild, ChildStdin, ChildStdout, Command as TokioCommand};
 
-use crate::session::Session;
+use crate::link::Link;
 
 /// A declared extension: what to run, with what environment, speaking which
 /// codec. `name` is the declaration key (the guest echoes it in its hello).
@@ -68,11 +68,11 @@ impl Spec {
     }
 }
 
-/// A spawned extension: the process handle plus its session halves.
+/// A spawned extension: the process handle plus its link halves.
 pub struct Process {
     pub name: String,
     pub child: TokioChild,
-    pub session: Session<ChildStdout, ChildStdin>,
+    pub link: Link<ChildStdout, ChildStdin>,
 }
 
 impl Process {
@@ -133,6 +133,6 @@ pub fn spawn(spec: &Spec) -> io::Result<Process> {
     Ok(Process {
         name: spec.name.clone(),
         child,
-        session: Session::new(stdout, stdin),
+        link: Link::new(stdout, stdin),
     })
 }

@@ -1,9 +1,9 @@
-//! The session: framed lines in and out, every await budgeted.
+//! The link: framed lines in and out, every await budgeted.
 //!
 //! Read and write are deliberately SEPARATE types ([`Reader`] / [`Writer`]) so a
 //! host can hold one borrow of each across a `select!` — the shape mudra's host
 //! already needs (its event source and the child's stdout are two live sources).
-//! [`Session`] bundles them for hosts that drive strictly request/response.
+//! [`Link`] bundles them for hosts that drive strictly request/response.
 //!
 //! Writes and the handshake always carry a budget; reads come in two forms, and
 //! the distinction is load-bearing. [`Reader::next_line`] takes a budget (the
@@ -18,7 +18,7 @@ use std::time::Duration;
 use induction_protocol::{Hello, initialize_line};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
 
-/// The budgets a session runs on. Handshake and write are the two places a
+/// The budgets a link runs on. Handshake and write are the two places a
 /// peer can hang the host; a read budget covers the idle-read case.
 #[derive(Debug, Clone, Copy)]
 pub struct Budgets {
@@ -67,7 +67,7 @@ impl<R: AsyncRead + Unpin> Reader<R> {
 
     /// The next frame line, awaiting with NO budget.
     ///
-    /// A live session may legitimately be silent: an extension with nothing to
+    /// A live link may legitimately be silent: an extension with nothing to
     /// say produces no frames, and the host's events arrive on the host's own
     /// clock. So an idle read must not become an outcome — only the channel
     /// closing does. `None` here means exactly one thing: the child died,
@@ -114,13 +114,13 @@ impl<W: AsyncWrite + Unpin> Writer<W> {
     }
 }
 
-/// Read + write halves of one session.
-pub struct Session<R, W> {
+/// Read + write halves of one link.
+pub struct Link<R, W> {
     pub reader: Reader<R>,
     pub writer: Writer<W>,
 }
 
-impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Session<R, W> {
+impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Link<R, W> {
     pub fn new(read: R, write: W) -> Self {
         Self {
             reader: Reader::new(read),
@@ -135,7 +135,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Session<R, W> {
     /// The load-time handshake: `initialize` out, `hello` in, both budgeted.
     ///
     /// `None` on either half failing, or on a hello that does not decode — a
-    /// contract mismatch is a refused session, never a defaulted one.
+    /// contract mismatch is a refused link, never a defaulted one.
     pub async fn handshake(&mut self, budget: Duration) -> Option<Hello> {
         if !self.writer.write_line(&initialize_line(), budget).await {
             return None;

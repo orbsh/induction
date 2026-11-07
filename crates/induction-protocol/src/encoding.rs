@@ -1,7 +1,7 @@
 //! The frame codec declaration.
 //!
 //! The codec is declared by the parent through [`ENCODING_ENV`], one encoding
-//! per session's life (never negotiated per frame). Both encodings carry the
+//! per link's life (never negotiated per frame). Both encodings carry the
 //! same `Value`-shaped frames: JSON is newline-delimited text; CBOR is one
 //! self-delimited document per frame (no length prefix, no terminator).
 
@@ -11,7 +11,7 @@
 /// the value string is part of the wire contract.
 pub const ENCODING_ENV: &str = "INDUCTION_ENCODING";
 
-/// Frame encoding, declared per session.
+/// Frame encoding, declared per link.
 ///
 /// This is a SERIALIZED type, not just an in-process enum: a host that
 /// carries the declaration in its own control frame (effector's `ToolCall`,
@@ -39,7 +39,7 @@ impl Encoding {
 
     /// Decode the declared spelling. Unknown values are `None` — the caller
     /// falls back to [`Encoding::Json`]; an unrecognised codec name must not
-    /// fail a session (the shipped behaviour, kept deliberately).
+    /// fail a link (the shipped behaviour, kept deliberately).
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "json" => Some(Encoding::Json),

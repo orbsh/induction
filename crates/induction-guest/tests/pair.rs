@@ -62,7 +62,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
 
     // ---- the load-time handshake: the declaration comes from the registry ----
     let hello = process
-        .session
+        .link
         .handshake(b.handshake)
         .await
         .expect("the guest answers initialize with hello");
@@ -82,7 +82,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
     // ---- the pull form answers from the same registry ----
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::call(1, "interface_schema", Value::Null).to_line(),
@@ -91,7 +91,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(b.read)
         .await
@@ -107,7 +107,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
     // ---- a handler's value, a handler's failure: both are VALUES ----
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::call(2, "echo", json!({"n": 1})).to_line(),
@@ -116,7 +116,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(b.read)
         .await
@@ -128,13 +128,13 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
 
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(&CallFrame::call(3, "boom", Value::Null).to_line(), b.write)
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(b.read)
         .await
@@ -153,7 +153,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
     // ---- the ctx arm crosses the boundary, in the guest's own spelling ----
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::call(4, "ask_host", Value::Null).to_line(),
@@ -162,7 +162,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(b.read)
         .await
@@ -177,13 +177,13 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
     );
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(&reply.to_line(), b.write)
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(b.read)
         .await
@@ -199,7 +199,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
     // ---- iterate: the producer binding, round by round, then exhaustion ----
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::iterate(5, IterateKind::Start, "list", Value::Null, "s1").to_line(),
@@ -208,7 +208,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(b.read)
         .await
@@ -220,7 +220,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
     for (round, expect_item) in [(6u64, 1), (7, 2)] {
         assert!(
             process
-                .session
+                .link
                 .writer
                 .write_line(
                     &CallFrame::iterate(round, IterateKind::Next, "list", Value::Null, "s1")
@@ -230,7 +230,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
                 .await
         );
         let line = process
-            .session
+            .link
             .reader
             .next_line(b.read)
             .await
@@ -246,7 +246,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
     // the guard is exhausted: terminal, and the stream is gone afterwards
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::iterate(8, IterateKind::Next, "list", Value::Null, "s1").to_line(),
@@ -255,7 +255,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(b.read)
         .await
@@ -286,7 +286,7 @@ async fn two_requests_run_at_once_and_each_waits_on_its_own_reply() {
     let mut process = spawn(&spec).expect("spawn the concurrent fixture");
     let b = budgets();
     let hello = process
-        .session
+        .link
         .handshake(b.handshake)
         .await
         .expect("handshake");
@@ -300,7 +300,7 @@ async fn two_requests_run_at_once_and_each_waits_on_its_own_reply() {
     ] {
         assert!(
             process
-                .session
+                .link
                 .writer
                 .write_line(&frame.to_line(), b.write)
                 .await
@@ -311,7 +311,7 @@ async fn two_requests_run_at_once_and_each_waits_on_its_own_reply() {
     let mut call_ids = Vec::new();
     while answered.len() < 2 {
         let line = process
-            .session
+            .link
             .reader
             .next_line(b.read)
             .await
@@ -325,7 +325,7 @@ async fn two_requests_run_at_once_and_each_waits_on_its_own_reply() {
                     Some(id) => reply.to_line_with_id(id),
                     None => reply.to_line(),
                 };
-                assert!(process.session.writer.write_line(&line, b.write).await);
+                assert!(process.link.writer.write_line(&line, b.write).await);
             }
             Some(GuestFrame::Result(r)) => answered.push(
                 r.result["who"]
@@ -358,11 +358,11 @@ async fn a_hook_is_reachable_by_its_reserved_name() {
     let spec = Spec::new("loop", [env!("CARGO_BIN_EXE_loop_guest").to_string()]);
     let mut process = spawn(&spec).expect("spawn the guest fixture");
     let b = budgets();
-    assert!(process.session.handshake(b.handshake).await.is_some());
+    assert!(process.link.handshake(b.handshake).await.is_some());
 
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::call(1, "__wake", Value::Null).to_line(),
@@ -371,7 +371,7 @@ async fn a_hook_is_reachable_by_its_reserved_name() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(b.read)
         .await
@@ -385,7 +385,7 @@ async fn a_hook_is_reachable_by_its_reserved_name() {
 
 /// The guest's CBOR codec, over a real process. The parent here is hand-written
 /// (ciborium straight onto the pipes) rather than `induction-host`: the host
-/// session's writer is JSON-lines by contract, so the CBOR parent a deployment
+/// link's writer is JSON-lines by contract, so the CBOR parent a deployment
 /// uses is the CARRIER that declares the codec — this test speaks what that
 /// carrier speaks. Without it the guest's CBOR loop has no real-process
 /// coverage at all (`wire.rs` locks the declaration, not the loop; the

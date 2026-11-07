@@ -88,7 +88,7 @@ pub enum Routed {
     /// A request answer (`result` frame) — logged or consumed by the host.
     Result(Value),
     /// Not a decodable frame: the version-mismatch signal. Never absorbed
-    /// silently — the caller decides whether to log it or end the session.
+    /// silently — the caller decides whether to log it or end the link.
     DecodeFailed,
 }
 

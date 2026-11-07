@@ -11,7 +11,7 @@
 两个实现都已存在，词汇表也因此存在了三份：
 
 - **guest 面** —— `effector/crates/bgi-guest`（416 行，只用 serde_json + ciborium：这是唯一一开始就长对了形态的部分）。
-- **宿主侧** —— `effector/crates/runtime/src/carrier/exec.rs`（825 行）+ `carrier/session.rs`（372 行），与 WS 运行时、内嵌 steel/python carrier、`bwrap` 策略、nushell fifo adapter，以及那套独立的 bare-`exec` 一次性 carrier 焊在一起。
+- **宿主侧** —— `effector/crates/runtime/src/carrier/exec.rs`（825 行）+ `carrier/link.rs`（372 行），与 WS 运行时、内嵌 steel/python carrier、`bwrap` 策略、nushell fifo adapter，以及那套独立的 bare-`exec` 一次性 carrier 焊在一起。
 - **一份裁剪复制** —— `mudra/crates/mudrad/src/host.rs`（292 行），帧是手写的 `serde_json::json!` 字面量。
 
 同一个契约的三种拼法产生了漂移，漂移又产生了任何一侧单独都看不见的 bug（见下文*查实的差异*）。第四处宿主只会产生第四种拼法。
@@ -76,7 +76,7 @@
 4. 帧的 discriminator（`initialize`、`hello`、`call`、`result`、`host`、`host_reply`）不含 `bgi` —— 无需改动（已核实）。
 
 **Status（2026-10-13 补记）**：四项均已落地。内部 Rust 标识符在后续一轮中
-也改了：`BgiSession` → `InductionSession`、`BgiKind` → `SessionKind`、
+也改了：`BgiSession` → `InductionSession`（现为 `InductionExecutor`）、`BgiKind` → `SessionKind`（现为 `CarrierShape`）、
 `bgi_*`/`nu_bgi_*` 测试名 → `induction_*`/`nu_induction_*`（effector runtime
 + aura engine 测试；门：effector `--features python,steel` 41/0 + clippy 0，
 aura workspace 70/0 / `--features python` 86/0 + clippy 0）。刻意不做的只剩

@@ -22,7 +22,7 @@ The channel as built is serial at BOTH ends:
 
 - **Host.** `supervise.rs` is one loop — read a line, `route_line(ops, &line).await`,
   write the reply line — and `ops.invoke(&call).await` sits inline in that loop. A
-  call that takes minutes blocks every later frame of the session, including
+  call that takes minutes blocks every later frame of the link, including
   frames that have nothing to do with it.
 - **Guest.** `read_host_reply` takes the NEXT frame off the channel as the answer
   to the request it just wrote (`induction-guest/src/lib.rs`, "no host_reply" is
@@ -86,7 +86,7 @@ ctx call it writes. Absent (a serial guest, an older guest) the host falls back 
 the single armed call — unambiguous exactly while one call is in flight.
 
 **The alternative — declare FIFO reply ordering as part of the protocol — is
-rejected.** It would make every long call a stall for the whole session, which
+rejected.** It would make every long call a stall for the whole link, which
 contradicts what resident means, and it would push a scheduling policy into a
 format that has no business having one.
 
@@ -106,11 +106,11 @@ format that has no business having one.
 - **The failure's blast radius shrinks.** A handler that returns an error is
   already answered, not fatal (`Routed::Reply(Reply::Error)`), and an undecodable
   guest frame is logged and skipped. What is fatal today is a handler that
-  PANICS: it panics the loop, and the session dies with it. With one task per
+  PANICS: it panics the loop, and the link dies with it. With one task per
   request, the panic is confined to that request's task — the caller sees a
-  channel that answered nothing, the session lives on, and the isolation question
+  channel that answered nothing, the link lives on, and the isolation question
   becomes "what does a request's caller do when its task dies", which is a
-  per-request answer instead of a per-session one.
+  per-request answer instead of a per-link one.
 
 ## Landed (2026-11-02)
 

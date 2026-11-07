@@ -10,14 +10,14 @@
 //!
 //! The vocabulary used to be spelled three times (the guest shim, the carrier,
 //! and mudra's host), and the copies drifted. Here it has exactly one home:
-//! `induction-host` drives sessions, `induction-guest` is the Rust guest face,
+//! `induction-host` drives links, `induction-guest` is the Rust guest face,
 //! and both link this crate.
 //!
 //! ## Wire facts (all taken from shipped code, nothing invented here)
 //!
 //! - **Codec declaration**: the child learns the frame encoding from the
 //!   [`ENCODING_ENV`] environment variable (`"json"` | `"cbor"`; absent or
-//!   unknown = json — a bad value never fails a session). An env, not an argv:
+//!   unknown = json — a bad value never fails a link). An env, not an argv:
 //!   the fifo-shaped spawn specs pass exactly the author's own arguments, and a
 //!   runtime-appended argv would break the author's arity.
 //! - **parent → child**: `{"id":N,"kind":"call","event":…,"args":…}`; the

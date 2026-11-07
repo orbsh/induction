@@ -1,10 +1,10 @@
-//! Driving sessions: the select loop, a convenience runner, and the supervisor.
+//! Driving links: the select loop, a convenience runner, and the supervisor.
 //!
 //! The loop shape is the one mudra's host already runs, with the store coupling
 //! removed: two live sources (host-supplied event frames, the guest's channel),
-//! every write budgeted, and a failed write ending the session rather than
+//! every write budgeted, and a failed write ending the link rather than
 //! silently losing frames. A host with a different event model (mudra pulls a
-//! log window when a signal arrives) uses [`crate::session`] directly and keeps
+//! log window when a signal arrives) uses [`crate::link`] directly and keeps
 //! its own loop — the library does not force an event model on the host.
 
 use std::future::{Future, poll_fn};
@@ -17,9 +17,9 @@ use tokio::sync::mpsc;
 
 use crate::ops::{HostOps, Routed, route_line_tagged};
 use crate::process::{Process, Spec, spawn};
-use crate::session::{Budgets, Session};
+use crate::link::{Budgets, Link};
 
-/// Why a session ended. Every variant is a supervisor's input, not an error
+/// Why a link ended. Every variant is a supervisor's input, not an error
 /// value for the guest.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
@@ -28,7 +28,7 @@ pub enum Outcome {
     /// `initialize` → `hello` did not complete (missing, malformed, or late).
     HandshakeFailed,
     /// The child closed its channel (or the read errored) — the only
-    /// termination signal a live session produces on its own.
+    /// termination signal a live link produces on its own.
     GuestGone,
     /// A frame write missed its budget: the guest is not reading. The frame did
     /// not land — a host keeping a cursor must not advance it.
@@ -46,7 +46,7 @@ type RouteFuture<'a> = Pin<Box<dyn Future<Output = (Option<u64>, Routed)> + Send
 /// routes keep borrowing `ops`.
 type InFlight<'a> = Vec<RouteFuture<'a>>;
 
-/// Drive one live session: deliver host frames, serve guest arms.
+/// Drive one live link: deliver host frames, serve guest arms.
 ///
 /// The guest's calls are routed CONCURRENTLY (ADR-0002): a frame starts a route
 /// future, the loop keeps reading, and each finished route is written with the
@@ -59,7 +59,7 @@ type InFlight<'a> = Vec<RouteFuture<'a>>;
 /// never waits would grow the vector without bound, and the memory would be the
 /// host's, not the guest's.
 pub async fn run_driver<R, W>(
-    session: &mut Session<R, W>,
+    link: &mut Link<R, W>,
     ops: &dyn HostOps,
     events: &mut mpsc::Receiver<CallFrame>,
     budgets: Budgets,
@@ -77,7 +77,7 @@ where
         Line(Option<String>),
     }
 
-    let Session { reader, writer } = session;
+    let Link { reader, writer } = link;
     let mut inflight: InFlight<'_> = Vec::new();
     loop {
         let any = !inflight.is_empty();
@@ -165,7 +165,7 @@ pub async fn run_process(
         Ok(p) => p,
         Err(e) => return Outcome::SpawnFailed(format!("{}: {e}", spec.command_line())),
     };
-    let hello = match process.session.handshake(budgets.handshake).await {
+    let hello = match process.link.handshake(budgets.handshake).await {
         Some(h) => h,
         None => {
             process.kill();
@@ -178,7 +178,7 @@ pub async fn run_process(
             spec.name, spec.name, hello.name
         );
     }
-    let outcome = run_driver(&mut process.session, ops, events, budgets).await;
+    let outcome = run_driver(&mut process.link, ops, events, budgets).await;
     process.kill();
     outcome
 }
@@ -208,7 +208,7 @@ where
 /// The supervisor used by every host in this workspace: constant backoff.
 pub const DEFAULT_BACKOFF: Duration = Duration::from_secs(10);
 
-/// A `Process` whose session is left un-driven: the primitive form, for hosts
+/// A `Process` whose link is left un-driven: the primitive form, for hosts
 /// that own their loop. Exposed so a host never has to re-implement spawn.
 pub fn spawn_only(spec: &Spec) -> std::io::Result<Process> {
     spawn(spec)

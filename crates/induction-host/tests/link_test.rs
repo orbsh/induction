@@ -1,4 +1,4 @@
-//! Session tests: the two halves of the contract an in-memory fake can prove,
+//! Link tests: the two halves of the contract an in-memory fake can prove,
 //! plus one live child (the `loop` example) proving the spawn+PDEATHSIG path,
 //! the handshake and a real round trip.
 //!
@@ -37,7 +37,7 @@ async fn serve(line: &str, ops: &dyn HostOps) -> String {
     }
 }
 
-// ======================= in-memory session =======================
+// ======================= in-memory link =======================
 
 /// A fake guest on the other end of a duplex: answers the handshake, then
 /// echoes whatever request it receives as a result frame.
@@ -68,19 +68,19 @@ async fn handshake_and_round_trip_over_a_duplex() {
     let guest = tokio::spawn(fake_guest(guest_side));
 
     let (r, w) = tokio::io::split(host_side);
-    let mut session = induction_host::Session::new(r, w);
+    let mut link = induction_host::Link::new(r, w);
     let budgets = Budgets {
         handshake: Duration::from_secs(1),
         write: Duration::from_secs(1),
         read: Duration::from_secs(1),
     };
 
-    let hello = session.handshake(budgets.handshake).await.expect("hello");
+    let hello = link.handshake(budgets.handshake).await.expect("hello");
     assert_eq!(hello.name, "fake");
     assert!(hello.schema.receives("ping"));
 
     assert!(
-        session
+        link
             .writer
             .write_line(
                 &CallFrame::call(1, "ping", json!(null)).to_line(),
@@ -88,7 +88,7 @@ async fn handshake_and_round_trip_over_a_duplex() {
             )
             .await
     );
-    let line = session
+    let line = link
         .reader
         .next_line(budgets.read)
         .await
@@ -105,13 +105,13 @@ async fn handshake_and_round_trip_over_a_duplex() {
 }
 
 #[tokio::test]
-async fn a_missing_handshake_refuses_the_session() {
+async fn a_missing_handshake_refuses_the_link() {
     let (host_side, guest_side) = tokio::io::duplex(256);
     drop(guest_side); // peer gone before hello
     let (r, w) = tokio::io::split(host_side);
-    let mut session = induction_host::Session::new(r, w);
+    let mut link = induction_host::Link::new(r, w);
     assert!(
-        session
+        link
             .handshake(Duration::from_millis(200))
             .await
             .is_none()
@@ -123,10 +123,10 @@ async fn a_write_that_misses_its_budget_reports_false() {
     // A peer that never reads: the write must give up rather than hang.
     let (a, b) = tokio::io::duplex(64);
     let (r, w) = tokio::io::split(a);
-    let mut session = induction_host::Session::new(r, w);
+    let mut link = induction_host::Link::new(r, w);
     let big = "x".repeat(4096);
     assert!(
-        !session
+        !link
             .writer
             .write_line(&big, Duration::from_millis(50))
             .await,
@@ -226,7 +226,7 @@ async fn a_real_child_handshakes_and_answers() {
     };
 
     let hello = process
-        .session
+        .link
         .handshake(budgets.handshake)
         .await
         .expect("a live child answers the handshake");
@@ -237,7 +237,7 @@ async fn a_real_child_handshakes_and_answers() {
     // one real round trip: the request into the child, its answer back out
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::call(1, "echo", json!({"n": 1})).to_line(),
@@ -246,7 +246,7 @@ async fn a_real_child_handshakes_and_answers() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(budgets.read)
         .await
@@ -256,10 +256,10 @@ async fn a_real_child_handshakes_and_answers() {
         other => panic!("expected a result frame, got {other:?}"),
     }
 
-    // a failing handler rides back as an error VALUE, not a broken session
+    // a failing handler rides back as an error VALUE, not a broken link
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::call(2, "boom", json!(null)).to_line(),
@@ -268,7 +268,7 @@ async fn a_real_child_handshakes_and_answers() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(budgets.read)
         .await
@@ -287,7 +287,7 @@ async fn a_real_child_handshakes_and_answers() {
     // the ctx arm crosses the process boundary: the child asks, the host answers
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::call(3, "ask_host", json!(null)).to_line(),
@@ -296,7 +296,7 @@ async fn a_real_child_handshakes_and_answers() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(budgets.read)
         .await
@@ -310,7 +310,7 @@ async fn a_real_child_handshakes_and_answers() {
             );
             assert!(
                 process
-                    .session
+                    .link
                     .writer
                     .write_line(&r.to_line(), budgets.write)
                     .await
@@ -319,7 +319,7 @@ async fn a_real_child_handshakes_and_answers() {
         other => panic!("expected a host arm, got {other:?}"),
     }
     let line = process
-        .session
+        .link
         .reader
         .next_line(budgets.read)
         .await
@@ -335,7 +335,7 @@ async fn a_real_child_handshakes_and_answers() {
     // iterate: start opens the stream, next pulls rounds, exhaustion is terminal
     assert!(
         process
-            .session
+            .link
             .writer
             .write_line(
                 &CallFrame::iterate(4, IterateKind::Start, "list", json!(null), "s1").to_line(),
@@ -344,7 +344,7 @@ async fn a_real_child_handshakes_and_answers() {
             .await
     );
     let line = process
-        .session
+        .link
         .reader
         .next_line(budgets.read)
         .await
@@ -369,13 +369,13 @@ async fn a_driver_run_ends_when_the_event_source_closes() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     });
     let (r, w) = tokio::io::split(host_side);
-    let mut session = induction_host::Session::new(r, w);
+    let mut link = induction_host::Link::new(r, w);
     let budgets = Budgets::default();
-    assert!(session.handshake(budgets.handshake).await.is_some());
+    assert!(link.handshake(budgets.handshake).await.is_some());
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<CallFrame>(1);
     drop(tx); // the host's event source is gone
-    let outcome = run_driver(&mut session, &Stub, &mut rx, budgets).await;
+    let outcome = run_driver(&mut link, &Stub, &mut rx, budgets).await;
     assert_eq!(outcome, Outcome::ShuttingDown);
 }
 
@@ -399,19 +399,19 @@ async fn a_silent_guest_is_not_a_dead_guest() {
     });
 
     let (r, w) = tokio::io::split(host_side);
-    let mut session = induction_host::Session::new(r, w);
+    let mut link = induction_host::Link::new(r, w);
     let budgets = Budgets {
         handshake: Duration::from_secs(1),
         write: Duration::from_millis(50),
         read: Duration::from_millis(50), // deliberately far below the silence
     };
-    assert!(session.handshake(budgets.handshake).await.is_some());
+    assert!(link.handshake(budgets.handshake).await.is_some());
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<CallFrame>(1);
     assert!(
         tokio::time::timeout(
             Duration::from_millis(250),
-            run_driver(&mut session, &Stub, &mut rx, budgets)
+            run_driver(&mut link, &Stub, &mut rx, budgets)
         )
         .await
         .is_err(),
@@ -421,7 +421,7 @@ async fn a_silent_guest_is_not_a_dead_guest() {
     // the guest really goes away; now — and only now — the driver ends
     guest.await.unwrap();
     assert_eq!(
-        run_driver(&mut session, &Stub, &mut rx, budgets).await,
+        run_driver(&mut link, &Stub, &mut rx, budgets).await,
         Outcome::GuestGone
     );
     drop(tx);
@@ -493,16 +493,16 @@ async fn the_driver_routes_two_guest_calls_at_once() {
     let guest = tokio::spawn(two_call_guest(guest_side, tx));
 
     let (r, w) = tokio::io::split(host_side);
-    let mut session = induction_host::Session::new(r, w);
+    let mut link = induction_host::Link::new(r, w);
     let budgets = Budgets {
         handshake: Duration::from_secs(1),
         write: Duration::from_secs(1),
         read: Duration::from_secs(1),
     };
-    assert!(session.handshake(budgets.handshake).await.is_some());
+    assert!(link.handshake(budgets.handshake).await.is_some());
 
     let (events_tx, mut events) = tokio::sync::mpsc::channel::<CallFrame>(1);
-    let driver = tokio::spawn(async move { run_driver(&mut session, &SlowStreams, &mut events, budgets).await });
+    let driver = tokio::spawn(async move { run_driver(&mut link, &SlowStreams, &mut events, budgets).await });
 
     // The fast call's reply carries its own id and arrives first, even though
     // the slow call was read first.

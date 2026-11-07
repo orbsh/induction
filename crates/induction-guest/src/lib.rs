@@ -553,7 +553,7 @@ impl Guest {
     }
 
     /// Run: own the stdio channels, loop until EOF (the parent closed stdin =
-    /// the session ends — teardown or eviction).
+    /// the link ends — teardown or eviction).
     pub fn run(self) -> anyhow::Result<()> {
         let _ = ENCODING_ENV;
         match Encoding::from_env() {
@@ -625,7 +625,7 @@ impl Guest {
             }
             let Some(req) = CallFrame::from_value(&frame) else {
                 // Not a request we can answer (no id to key a result to). Log
-                // and keep the session: a host's stray frame must not kill a
+                // and keep the link: a host's stray frame must not kill a
                 // live extension.
                 eprintln!("[induction-guest] undecodable frame: {frame}");
                 continue;
@@ -678,7 +678,7 @@ impl Worker {
             }
         };
         // A handler's failure is an ANSWER (the host turns it into a failed
-        // call), never a torn session.
+        // call), never a torn link.
         let result = match result {
             Ok(v) => v,
             Err(e) => Value::String(format!("{e:#}")),

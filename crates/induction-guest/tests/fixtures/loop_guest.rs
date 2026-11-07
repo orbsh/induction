@@ -1,4 +1,4 @@
-//! The live-child fixture for the host's session tests: a real guest process
+//! The live-child fixture for the host's link tests: a real guest process
 //! built from the guest crate, so the tests exercise spawn + PDEATHSIG +
 //! handshake + a genuine pipe round trip instead of a mock.
 //!

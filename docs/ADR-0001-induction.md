@@ -19,7 +19,7 @@ Both implementations existed, and so did their vocabulary — three times over:
 - **guest face** — `effector/crates/bgi-guest` (416 lines, serde_json +
   ciborium only: the one piece already shaped right).
 - **host side** — `effector/crates/runtime/src/carrier/exec.rs` (825 lines) +
-  `carrier/session.rs` (372), welded to the WS runtime, the embedded
+  `carrier/link.rs` (372), welded to the WS runtime, the embedded
   steel/python carriers, `bwrap` policy, the nushell fifo adapter, and the
   separate bare-`exec` one-shot carrier.
 - **a trimmed copy** — `mudra/crates/mudrad/src/host.rs` (292 lines), with
@@ -60,7 +60,7 @@ not carry the guest facade.
 ### 2. Boundary: the channel and the lifetime, nothing else
 
 In: frame types, arm names, tier vocabulary, schema surface, codec declaration,
-session I/O with budgets, the ctx-arm routing trait, the process adapter
+link I/O with budgets, the ctx-arm routing trait, the process adapter
 (PDEATHSIG + `kill_on_drop`), the constant-backoff supervisor.
 
 Out, by ruling: storage (there is no store here, so *nothing in this library
@@ -76,7 +76,7 @@ aura's uploaded-booth path needs introspection collectors and a blob store).
 
 - **Codec** — declared by the parent through `INDUCTION_ENCODING`
   (`"json"`|`"cbor"`; absent or unknown → json; a bad value never fails a
-  session). An env, not an argv: fifo-shaped specs pass the author's own
+  link). An env, not an argv: fifo-shaped specs pass the author's own
   arguments.
 - **Arms** — the ADR-0043 ctx members as dotted method paths, adopted verbatim
   (`invoke`, `iterate.start/next/dispose`, `store`, `emit`,
@@ -171,8 +171,9 @@ Item 4 needed nothing, as recorded.
 Left outside the list on purpose: the prose sweep of `BGI|bgi` in ADRs and
 PLANs — historical decision text is not rewritten (the
 `partition key → instance key` precedent). The internal Rust identifiers WERE
-renamed in a later pass (2026-10-13): `BgiSession` → `InductionSession`,
-`BgiKind` → `SessionKind`, and the `bgi_*`/`nu_bgi_*` test names to
+renamed in a later pass (2026-10-13): `BgiSession` → `InductionSession`
+(now `InductionExecutor`), `BgiKind` → `SessionKind` (now `CarrierShape`),
+and the `bgi_*`/`nu_bgi_*` test names to
 `induction_*`/`nu_induction_*` (effector runtime + aura engine tests; gates:
 effector `--features python,steel` 41/0 + clippy 0, aura workspace 70/0 /
 `--features python` 86/0 + clippy 0). The historical passages that cite the
@@ -216,7 +217,7 @@ Facts, not plans — all verified in the shipped code:
   `induction-protocol` for frames and the codec enum.
 - `aura` (batch 3, refactor not drop-in) has the realm's process-carrier branch
   delegate to `induction-host`. Its WS remote-effector leg stays in aura as
-  another transport over the same session code. **Resolved 2026-10-13 (batch 3
+  another transport over the same link code. **Resolved 2026-10-13 (batch 3
   as landed):** the two host-call types are NOT collapsed — `HostOp` (WS, serde-
   tagged, id-paired across concurrent streams) and the pipe `HostFrame`
   (in-band, serially paired) are two TRANSPORT encodings of one arm VOCABULARY

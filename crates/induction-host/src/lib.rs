@@ -15,9 +15,9 @@
 //! - not a sandbox: `bwrap`/cgroup/jail policy belongs to the host's spawn
 //!   layer. This crate spawns what it is told to spawn (with PDEATHSIG, so a
 //!   dead host never leaves orphans).
-//! - not a transport zoo: [`session`] is generic over the byte channel, and
+//! - not a transport zoo: [`link`] is generic over the byte channel, and
 //!   [`process`] is one adapter over it. A WS-backed duplex or an in-memory
-//!   pair drives the same session code.
+//!   pair drives the same link code.
 //!
 //! ## Minimal host
 //!
@@ -42,12 +42,12 @@
 //! async fn drive(spec: Spec) {
 //!     // No `.expect()`: a spawn failure is a returned outcome, not a crash.
 //!     let Ok(mut process) = spawn(&spec) else { return };
-//!     if process.session.handshake(Budgets::default().handshake).await.is_none() {
+//!     if process.link.handshake(Budgets::default().handshake).await.is_none() {
 //!         process.kill();
 //!         return;
 //!     }
 //!     let (_tx, mut rx) = tokio::sync::mpsc::channel::<CallFrame>(16);
-//!     run_driver(&mut process.session, &Verbs, &mut rx, Budgets::default()).await;
+//!     run_driver(&mut process.link, &Verbs, &mut rx, Budgets::default()).await;
 //!     process.kill();
 //! }
 //! ```
@@ -73,14 +73,14 @@
 
 pub mod ops;
 pub mod process;
-pub mod session;
+pub mod link;
 pub mod supervise;
 
 pub use induction_protocol::parse_guest_value;
 pub use induction_protocol::{Arm, CallFrame, Encoding, FrameKind, InvokeCall, IterateKind, Reply};
 pub use ops::{HostOps, OpsFuture, Routed, route_frame, route_line};
 pub use process::{Process, Spec, spawn};
-pub use session::{Budgets, Reader, Session, Writer};
+pub use link::{Budgets, Reader, Link, Writer};
 pub use supervise::{DEFAULT_BACKOFF, Outcome, run_driver, run_process, spawn_only, supervise};
 
 /// The protocol revision this host speaks.

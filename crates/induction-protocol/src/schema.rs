@@ -7,7 +7,7 @@
 //!
 //! - **pull** — the host sends a `call` whose event is [`SCHEMA_EVENT`]; the
 //!   guest answers with the assembled [`Schema`]. This is also the form
-//!   introspection tooling uses, before any session exists.
+//!   introspection tooling uses, before any link exists.
 //! - **handshake** — the host writes [`initialize_line`] and the guest answers
 //!   [`Hello`], carrying the same schema at load. A host that needs the
 //!   subscription set before it delivers anything uses this; a host that does
