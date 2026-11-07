@@ -1,4 +1,4 @@
-//! The live-child fixture for the host's session tests: a guest written
+//! The live-child fixture for the host's link tests: a guest written
 //! straight against `induction-protocol` (no guest crate — the host crate must
 //! not depend on the guest crate, and this keeps the fixture a bin of THIS
 //! package, which is what makes cargo build it for these tests).
@@ -33,13 +33,12 @@ fn main() {
         wildcard_receives: Vec::new(),
         hooks: vec!["__wake".to_string()],
         storage: None,
-        auth: None,
     };
 
     loop {
         let mut line = String::new();
         match reader.read_line(&mut line) {
-            Ok(0) | Err(_) => return, // parent closed the channel: session over
+            Ok(0) | Err(_) => return, // parent closed the channel: link over
             Ok(_) => {}
         }
         let Ok(v) = serde_json::from_str::<Value>(line.trim()) else {
