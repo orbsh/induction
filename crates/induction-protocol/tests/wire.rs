@@ -162,6 +162,12 @@ fn arm_vocabulary_is_the_frozen_adr_0043_set() {
         "queue.depth",
         "queue.skip_to_head",
         "schema",
+        // Added 2026-11-09 for stage one of a stop (aura ADR-0047). Both live on
+        // the ctx object beside `queue`, and both exist because a stop cannot be
+        // an event: a delivery to a busy instance queues behind the work it means
+        // to stop.
+        "stop.poll",
+        "stop.clear",
     ];
     assert_eq!(Arm::ALL.len(), want.len());
     for (arm, name) in Arm::ALL.into_iter().zip(want) {

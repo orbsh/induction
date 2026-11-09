@@ -19,6 +19,12 @@ fn main() -> anyhow::Result<()> {
             let answer = ctx.invoke_verb("pages", json!({ "filter": "rust" }))?;
             Ok(json!({ "from_host": answer }))
         })
+        .on("stopped", |ctx: &mut Ctx, _args: Value| {
+            // Stage one of a stop (aura ADR-0047): a bit the host answers, read at
+            // a boundary the guest already has.
+            let stopped = ctx.stop_poll()?;
+            Ok(json!({ "stopped": stopped }))
+        })
         .on("boom", |_ctx: &mut Ctx, _args: Value| {
             anyhow::bail!("deliberate failure for the error path")
         })

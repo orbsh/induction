@@ -205,6 +205,26 @@ impl Ctx<'_> {
         Ok(v.as_u64().unwrap_or(0))
     }
 
+    /// `ctx.stop.poll` — stage one of a stop (aura ADR-0047): has someone asked
+    /// THIS activation to stop? The answer is a bit, so this is a cheap read at a
+    /// boundary the guest already has — between chunks, between calls — and the
+    /// guest decides what stopping means (a turn ends its own stream and closes
+    /// nothing).
+    pub fn stop_poll(&mut self) -> anyhow::Result<bool> {
+        // No identity in the payload: the HOST knows whose activation is calling
+        // (one process per instance), and a guest-supplied identity would only
+        // invite a guest to ask about somebody else.
+        let v = self.send(HostFrame::new(Arm::StopPoll, Value::Null))?;
+        Ok(v.as_bool().unwrap_or(false))
+    }
+
+    /// `ctx.stop.clear` — the activation answered; the host forgets the request
+    /// rather than letting it stop the next activation of the same instance.
+    pub fn stop_clear(&mut self) -> anyhow::Result<()> {
+        self.send(HostFrame::new(Arm::StopClear, Value::Null))?;
+        Ok(())
+    }
+
     /// `ctx.queue.skip_to_head` — the relief valve (a discarded backlog never
     /// revives).
     pub fn queue_skip_to_head(&mut self, event: &str) -> anyhow::Result<()> {

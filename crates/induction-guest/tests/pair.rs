@@ -383,6 +383,63 @@ async fn a_hook_is_reachable_by_its_reserved_name() {
     process.kill();
 }
 
+/// Stage one of a stop (aura ADR-0047), over a real process: the guest asks at a
+/// boundary it already has, the HOST answers the bit, and the answer comes back
+/// as a value the handler can act on. The parent here plays the host by hand, so
+/// the assertion is on the frame that crosses the pipe (arm name + the boolean
+/// that comes back), not on a mock.
+#[tokio::test]
+async fn a_guest_reads_the_stop_bit_the_host_holds() {
+    let spec = Spec::new("loop", [env!("CARGO_BIN_EXE_loop_guest").to_string()]);
+    let mut process = spawn(&spec).expect("spawn the guest fixture");
+    let b = budgets();
+    assert!(process.link.handshake(b.handshake).await.is_some());
+
+    assert!(
+        process
+            .link
+            .writer
+            .write_line(&CallFrame::call(1, "stopped", Value::Null).to_line(), b.write)
+            .await
+    );
+
+    // The guest's ctx round trip arrives as a host frame naming the arm.
+    let line = process
+        .link
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("the guest asks the host");
+    let asked = parse_guest_line(&line).expect("a decodable frame");
+    let id = match &asked {
+        GuestFrame::Host(h) => {
+            assert_eq!(
+                h.arm.as_str(),
+                "stop.poll",
+                "the guest asks the arm, not an event: {}",
+                h.arm.as_str()
+            );
+            h.id.unwrap_or(0)
+        }
+        other => panic!("expected a host frame, got {other:?}"),
+    };
+
+    // The bit is set: answer it, and the handler reports what it read.
+    assert!(
+        process
+            .link
+            .writer
+            .write_line(&Reply::ok(Value::Bool(true)).to_line_with_id(id), b.write)
+            .await
+    );
+    let line = process.link.reader.next_line(b.read).await.expect("the result");
+    match parse_guest_line(&line) {
+        Some(GuestFrame::Result(r)) => assert_eq!(r.result, json!({ "stopped": true })),
+        other => panic!("expected a result frame, got {other:?}"),
+    }
+    process.kill();
+}
+
 /// The guest's CBOR codec, over a real process. The parent here is hand-written
 /// (ciborium straight onto the pipes) rather than `induction-host`: the host
 /// link's writer is JSON-lines by contract, so the CBOR parent a deployment

@@ -209,10 +209,17 @@ pub enum Arm {
     QueueDepth,
     QueueSkipToHead,
     Schema,
+    /// `ctx.stop.poll` — has this activation been asked to stop? Stage one of a
+    /// stop (aura ADR-0047): a bit the activation reads at a boundary it already
+    /// has. It cannot be an event — a delivery addressed to a busy instance
+    /// queues behind the work it means to stop.
+    StopPoll,
+    /// `ctx.stop.clear` — the activation answered the request.
+    StopClear,
 }
 
 impl Arm {
-    pub const ALL: [Arm; 11] = [
+    pub const ALL: [Arm; 13] = [
         Arm::Invoke,
         Arm::IterateStart,
         Arm::IterateNext,
@@ -224,6 +231,8 @@ impl Arm {
         Arm::QueueDepth,
         Arm::QueueSkipToHead,
         Arm::Schema,
+        Arm::StopPoll,
+        Arm::StopClear,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -239,6 +248,8 @@ impl Arm {
             Arm::QueueDepth => "queue.depth",
             Arm::QueueSkipToHead => "queue.skip_to_head",
             Arm::Schema => "schema",
+            Arm::StopPoll => "stop.poll",
+            Arm::StopClear => "stop.clear",
         }
     }
 

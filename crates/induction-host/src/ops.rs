@@ -69,6 +69,19 @@ pub trait HostOps: Send + Sync {
     fn schema<'a>(&'a self) -> OpsFuture<'a> {
         declined("schema")
     }
+
+    /// `ctx.stop.poll` — stage one of a stop (aura ADR-0047): a bit in the host's
+    /// memory that the activation reads at a boundary it already has. A host that
+    /// cannot answer must SAY SO — a false "no" is a stop that silently never
+    /// lands, which is worse than a guest that knows the arm is unavailable.
+    fn stop_poll<'a>(&'a self, _args: &'a Value) -> OpsFuture<'a> {
+        declined("stop.poll")
+    }
+
+    /// `ctx.stop.clear` — the activation answered the request.
+    fn stop_clear<'a>(&'a self, _args: &'a Value) -> OpsFuture<'a> {
+        declined("stop.clear")
+    }
 }
 
 fn declined<'a>(arm: &'static str) -> OpsFuture<'a> {
@@ -137,6 +150,8 @@ pub async fn route_frame(ops: &dyn HostOps, frame: GuestFrame) -> Routed {
             Routed::Reply(ops.queue_skip_to_head(&host.args).await.into_reply())
         }
         Arm::Schema => Routed::Reply(ops.schema().await.into_reply()),
+        Arm::StopPoll => Routed::Reply(ops.stop_poll(&host.args).await.into_reply()),
+        Arm::StopClear => Routed::Reply(ops.stop_clear(&host.args).await.into_reply()),
     }
 }
 
