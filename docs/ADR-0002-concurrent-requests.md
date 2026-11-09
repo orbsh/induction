@@ -143,8 +143,10 @@ format that has no business having one.
   progress. A resident guest holding a live stream between turns still needs a
   driver that outlives the requesting entry (a resident loop, a timer, a queue).
   That is the caller's design, not the channel's.
-- **Fairness, priorities, cancellation per request.** None exist; none are ruled
-  out. A request that never answers costs its slot until the caller gives up.
+- **Fairness and priorities.** None exist; none are ruled out. A request that never
+  answers costs its slot until the caller gives up.
+- **Cancellation per request** was on this list and is no longer: ADR-0003 rules the
+  frame (`{"type": "interrupt", "id": N}`) and the guest-side token, both landed.
 - **Whether a guest should BE concurrent.** This ADR makes it POSSIBLE. A guest
   that wants one-at-a-time behaviour keeps it by holding its own lock, which is
   the right place for that choice.
