@@ -361,3 +361,19 @@ fn encoding_declaration_is_wire_visible() {
         Encoding::Cbor
     );
 }
+
+#[test]
+fn an_interrupt_is_a_notice_the_reader_claims_before_the_call_arm() {
+    // It is not an arm and not a request: nothing is answered. The loop tries
+    // initialize → reply → interrupt → call, so the shapes must be disjoint or the
+    // order would not matter; this test is that disjointness.
+    use induction_protocol::InterruptFrame;
+    let notice = InterruptFrame::new(42);
+    let value = notice.to_value();
+    assert_eq!(value["type"], "interrupt");
+    assert_eq!(InterruptFrame::from_value(&value), Some(notice));
+    // A call frame is not an interrupt, and an interrupt is not a call.
+    let call = CallFrame::call(42, "turn", serde_json::json!({}));
+    assert_eq!(InterruptFrame::from_value(&call.to_value()), None);
+    assert!(CallFrame::from_value(&value).is_none());
+}

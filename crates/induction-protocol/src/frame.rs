@@ -442,6 +442,45 @@ impl InvokeCall {
     }
 }
 
+// -------------------------------------------------------------- interrupt --
+
+/// The `type` of a parent → child out-of-band notice: `{"type": "interrupt", "id": n}`.
+///
+/// It says one thing — *the call with this id is no longer wanted* — and it is not a
+/// request: nothing is answered, and a guest that already finished the call drops it
+/// (the id's token is gone). The reader loop is what makes it possible: it never runs
+/// handlers, so it is reading while one is blocked.
+pub const INTERRUPT_TYPE: &str = "interrupt";
+
+/// The notice itself. Addressed by call id because that is the only handle the parent
+/// holds — a stream id names a sequence, but the thing being abandoned is the call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InterruptFrame {
+    pub id: u64,
+}
+
+impl InterruptFrame {
+    pub fn new(id: u64) -> Self {
+        Self { id }
+    }
+
+    /// The wire form the reader loop decodes.
+    pub fn to_value(self) -> Value {
+        json!({ "type": INTERRUPT_TYPE, "id": self.id })
+    }
+
+    /// `None` for every frame that is not an interrupt — the loop tries the reply,
+    /// the call, and this in that order, and only one of them claims a frame.
+    pub fn from_value(value: &Value) -> Option<Self> {
+        if value.get("type")?.as_str()? != INTERRUPT_TYPE {
+            return None;
+        }
+        Some(Self {
+            id: value.get("id")?.as_u64()?,
+        })
+    }
+}
+
 // ---------------------------------------------------------------- replies --
 
 /// A host's answer to a ctx arm: `{"host_reply": {"ok": …}}` /

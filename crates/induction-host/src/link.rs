@@ -96,6 +96,18 @@ impl<W: AsyncWrite + Unpin> Writer<W> {
         Self { out: write }
     }
 
+    /// STAGE TWO OF A STOP (ADR-0047): tell the guest that the call with this id is
+    /// no longer wanted. It is not a request and nothing answers it; `false` means the
+    /// notice did not land, which the caller must treat as "the guest was not told"
+    /// rather than as a stop (that is what the kill clock is for).
+    pub async fn interrupt(&mut self, id: u64, budget: Duration) -> bool {
+        self.write_line(
+            &induction_protocol::InterruptFrame::new(id).to_value().to_string(),
+            budget,
+        )
+        .await
+    }
+
     /// Write one frame. `false` on a budget miss or an io error — the caller
     /// treats both as "this frame did not land" (so a cursor, if the host keeps
     /// one, must NOT be advanced).

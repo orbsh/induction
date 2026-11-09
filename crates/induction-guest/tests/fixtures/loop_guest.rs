@@ -25,6 +25,21 @@ fn main() -> anyhow::Result<()> {
             let stopped = ctx.stop_poll()?;
             Ok(json!({ "stopped": stopped }))
         })
+        .on("waiting", |ctx: &mut Ctx, _args: Value| {
+            // Stage two of a stop (aura ADR-0047): the handler sits inside one long
+            // operation — here, a wait — and the loop raises its flag from a frame that
+            // arrived while it was running. Cooperative by design: nothing else can
+            // reach into a plain function.
+            let started = std::time::Instant::now();
+            let mut cancelled = false;
+            while started.elapsed() < std::time::Duration::from_secs(5) {
+                if ctx.cancel().wait(std::time::Duration::from_millis(20)) {
+                    cancelled = true;
+                    break;
+                }
+            }
+            Ok(json!({ "cancelled": cancelled, "ms": started.elapsed().as_millis() as u64 }))
+        })
         .on("boom", |_ctx: &mut Ctx, _args: Value| {
             anyhow::bail!("deliberate failure for the error path")
         })

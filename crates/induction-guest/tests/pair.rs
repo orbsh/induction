@@ -26,7 +26,7 @@
 use std::time::Duration;
 
 use induction_host::{Budgets, HostOps, InvokeCall, OpsFuture, Routed, Spec, route_line, spawn};
-use induction_protocol::{CallFrame, GuestFrame, IterateKind, Reply, parse_guest_line};
+use induction_protocol::{CallFrame, GuestFrame, InterruptFrame, IterateKind, Reply, parse_guest_line};
 use serde_json::{Value, json};
 
 /// A host whose only arm is `invoke`: the minimal complete host.
@@ -518,4 +518,47 @@ fn the_cbor_codec_carries_the_same_shapes_over_a_real_process() {
 
     let _ = child.kill();
     let _ = child.wait();
+}
+
+/// STAGE TWO OF A STOP (ADR-0047): the parent stops waiting for a call, and the
+/// handler is told while it is inside a long operation. Over a real process, and
+/// timed: a handler that only learned by finishing would report ~5000 ms, so the
+/// clock is the assertion that separates "woken" from "waited out".
+#[tokio::test]
+async fn an_interrupt_frame_reaches_a_handler_that_is_still_running() {
+    let spec = Spec::new("loop", [env!("CARGO_BIN_EXE_loop_guest").to_string()]);
+    let mut process = spawn(&spec).expect("spawn the guest fixture");
+    let b = budgets();
+    assert!(process.link.handshake(b.handshake).await.is_some());
+
+    assert!(
+        process
+            .link
+            .writer
+            .write_line(&CallFrame::call(9, "waiting", Value::Null).to_line(), b.write)
+            .await
+    );
+    // The loop is reading while the handler waits — that is the whole reason this
+    // frame can land at all.
+    assert!(
+        process
+            .link
+            .writer
+            .write_line(
+                &InterruptFrame::new(9).to_value().to_string(),
+                b.write
+            )
+            .await
+    );
+
+    let line = process.link.reader.next_line(b.read).await.expect("the result");
+    match parse_guest_line(&line) {
+        Some(GuestFrame::Result(r)) => {
+            assert_eq!(r.result.get("cancelled"), Some(&Value::Bool(true)), "{:?}", r.result);
+            let ms = r.result.get("ms").and_then(Value::as_u64).unwrap_or(u64::MAX);
+            assert!(ms < 2000, "the handler was woken, not waited out: {ms} ms");
+        }
+        other => panic!("expected a result frame, got {other:?}"),
+    }
+    process.kill();
 }

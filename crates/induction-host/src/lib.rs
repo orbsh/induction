@@ -77,7 +77,9 @@ pub mod link;
 pub mod supervise;
 
 pub use induction_protocol::parse_guest_value;
-pub use induction_protocol::{Arm, CallFrame, Encoding, FrameKind, InvokeCall, IterateKind, Reply};
+pub use induction_protocol::{
+    Arm, CallFrame, Encoding, FrameKind, INTERRUPT_TYPE, InterruptFrame, InvokeCall, IterateKind, Reply,
+};
 pub use ops::{HostOps, OpsFuture, Routed, route_frame, route_line, route_line_tagged};
 pub use process::{Process, Spec, spawn};
 pub use link::{Budgets, Reader, Link, Writer};

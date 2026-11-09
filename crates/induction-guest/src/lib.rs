@@ -58,14 +58,18 @@
     )
 )]
 
+mod cancel;
+
+pub use cancel::CancelToken;
+
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
 use induction_protocol::{
-    Arm, CallFrame, ENCODING_ENV, Encoding, FrameKind, Hello, HostFrame, Reply, ResultFrame,
-    SCHEMA_EVENT, Schema,
+    Arm, CallFrame, ENCODING_ENV, Encoding, FrameKind, Hello, HostFrame, InterruptFrame, Reply,
+    ResultFrame, SCHEMA_EVENT, Schema,
 };
 use serde_json::Value;
 
@@ -77,6 +81,10 @@ use serde_json::Value;
 /// (the parent answers NOTHING by contract).
 pub struct Ctx<'a> {
     io: &'a Channel,
+    /// This call's cancel flag (ADR-0047 stage two). Raised by the reader loop when
+    /// the parent stops waiting; never raised by anything else, and never reset — one
+    /// call, one token.
+    cancel: CancelToken,
     /// The request this ctx belongs to: stamped on every host call, so a host
     /// running several of this process's handlers at once can tell which call a
     /// ctx frame serves. A serial guest never needs it; a concurrent one cannot
@@ -89,6 +97,22 @@ impl Ctx<'_> {
     fn send(&mut self, mut frame: HostFrame) -> anyhow::Result<Value> {
         frame.set_call(self.call);
         self.io.call(frame)
+    }
+
+    /// `ctx.cancel` — this call's flag. Raised when the parent stops waiting
+    /// (`{"type": "interrupt", "id": …}`), which is stage two of a stop: stage one is
+    /// the control bit a handler reads at its own boundaries, and this is the same
+    /// intent reaching a handler that is inside one long operation.
+    ///
+    /// Cooperative, honestly so: a handler that never looks cannot be stopped from
+    /// inside. Bounding that is the host's job, not this token's.
+    pub fn cancel(&self) -> &CancelToken {
+        &self.cancel
+    }
+
+    /// Shorthand for the usual question: `if ctx.is_cancelled() { break }`.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.is_cancelled()
     }
 
     /// `ctx.invoke` — the canonical (booth-call) spelling: target instance,
@@ -607,6 +631,10 @@ impl Guest {
         let channel = Arc::new(Channel::new(Box::new(writer)));
         let registry = Arc::new(self.registry);
         let streams: Streams = Arc::new(Mutex::new(HashMap::new()));
+        // The call table for stage two (ADR-0047): raised by the loop, read by the
+        // handler. Nothing here is a delivery — the handler is a plain function.
+        let cancels: Arc<Mutex<HashMap<u64, CancelToken>>> =
+            Arc::new(Mutex::new(HashMap::new()));
 
         // The serial worker. Even a serial guest needs one: the reader loop must
         // stay free to deliver replies while a handler waits on its id.
@@ -616,6 +644,7 @@ impl Guest {
                 channel: Arc::clone(&channel),
                 registry: Arc::clone(&registry),
                 streams: Arc::clone(&streams),
+                cancels: Arc::clone(&cancels),
             };
             std::thread::spawn(move || {
                 for req in job_rx {
@@ -635,6 +664,24 @@ impl Guest {
                     }
                     .to_value(),
                 )?;
+                continue;
+            }
+            // STAGE TWO OF A STOP (ADR-0047): the parent stopped waiting for a call,
+            // so the call's flag goes up. The loop is free to receive this precisely
+            // because it never runs a handler — that is the structural reason the
+            // interrupt can exist at all.
+            if let Some(interrupt) = InterruptFrame::from_value(&frame) {
+                let mut map = cancels
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                match map.get(&interrupt.id) {
+                    Some(token) => token.cancel(),
+                    // Not started yet (serial guest, queued): leave it raised so the
+                    // call begins cancelled rather than late.
+                    None => {
+                        map.insert(interrupt.id, CancelToken::cancelled());
+                    }
+                }
                 continue;
             }
             // A reply belongs to a call some handler is waiting on — never to
@@ -661,6 +708,7 @@ impl Guest {
                     channel: Arc::clone(&channel),
                     registry: Arc::clone(&registry),
                     streams: Arc::clone(&streams),
+                    cancels: Arc::clone(&cancels),
                 };
                 std::thread::spawn(move || worker.handle(req));
             } else if job_tx.send(req).is_err() {
@@ -676,13 +724,25 @@ struct Worker {
     channel: Arc<Channel>,
     registry: Arc<Registry>,
     streams: Streams,
+    /// id → the call's cancel flag. The loop raises what it finds; a worker takes
+    /// the token it is about to run under, which is also how a call that was
+    /// interrupted while still queued starts cancelled instead of starting late.
+    cancels: Arc<Mutex<HashMap<u64, CancelToken>>>,
 }
 
 impl Worker {
     fn handle(&self, req: CallFrame) {
+        let cancel = {
+            let mut map = self
+                .cancels
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            map.entry(req.id).or_default().clone()
+        };
         let ctx = &mut Ctx {
             io: &self.channel,
             call: req.id,
+            cancel,
         };
         let result = match req.kind {
             FrameKind::Call | FrameKind::IterateStart => {
@@ -703,6 +763,13 @@ impl Worker {
             Ok(v) => v,
             Err(e) => Value::String(format!("{e:#}")),
         };
+        // The call is over. An interrupt that arrives AFTER this leaves one raised
+        // token behind (the loop has no way to know the call just finished), so the map
+        // is bounded by "interrupts whose call was already done" — cancels, not traffic.
+        self.cancels
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&req.id);
         if let Err(e) = self
             .channel
             .write(&ResultFrame::new(Value::from(req.id), result).to_value())
