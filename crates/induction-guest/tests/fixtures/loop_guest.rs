@@ -40,6 +40,13 @@ fn main() -> anyhow::Result<()> {
             }
             Ok(json!({ "cancelled": cancelled, "ms": started.elapsed().as_millis() as u64 }))
         })
+        .on("wants_data", |ctx: &mut Ctx, args: Value| {
+            // `ctx.resource` (ADR-0003 §7): the guest names what it wants and the host answers a
+            // locator. The instruction is passed through verbatim — the guest never parses it, and
+            // the answer never carries the credential the host spent to get the bytes.
+            let answer = ctx.resource(args)?;
+            Ok(json!({ "from_host": answer }))
+        })
         .on("boom", |_ctx: &mut Ctx, _args: Value| {
             anyhow::bail!("deliberate failure for the error path")
         })

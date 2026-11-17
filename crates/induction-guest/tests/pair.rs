@@ -196,6 +196,71 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
         other => panic!("expected a result frame, got {other:?}"),
     }
 
+    // ---- the resource arm: the instruction crosses as data, the locator comes back ----
+    assert!(
+        process
+            .link
+            .writer
+            .write_line(
+                &CallFrame::call(
+                    41,
+                    "wants_data",
+                    json!({ "op": "get", "kind": "git", "remote": "org/repo" })
+                )
+                .to_line(),
+                b.write
+            )
+            .await
+    );
+    let line = process
+        .link
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("resource frame");
+    let (id, arm, sent) = match parse_guest_line(&line) {
+        Some(GuestFrame::Host(h)) => (h.id, h.arm, h.op.clone().unwrap_or(Value::Null)),
+        other => panic!("expected a host frame, got {other:?}"),
+    };
+    assert_eq!(
+        arm.as_str(),
+        "resource",
+        "the guest names the ctx member verbatim"
+    );
+    assert_eq!(
+        sent,
+        json!({ "op": "get", "kind": "git", "remote": "org/repo" }),
+        "the instruction crosses unparsed — the host resolves it, the guest only forwards it"
+    );
+    assert!(
+        process
+            .link
+            .writer
+            .write_line(
+                &Reply::ok(json!("/work/resources/org/repo"))
+                    .to_line_with_id(id.unwrap_or(0)),
+                b.write
+            )
+            .await
+    );
+    let line = process
+        .link
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("resource answer");
+    match parse_guest_line(&line) {
+        Some(GuestFrame::Result(r)) => {
+            assert_eq!(r.id, json!(41));
+            assert_eq!(
+                r.result["from_host"],
+                json!("/work/resources/org/repo"),
+                "the guest receives a locator, never the credential that bought it"
+            );
+        }
+        other => panic!("expected a result frame, got {other:?}"),
+    }
+
     // ---- iterate: the producer binding, round by round, then exhaustion ----
     assert!(
         process
