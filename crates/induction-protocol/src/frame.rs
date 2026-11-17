@@ -203,6 +203,10 @@ pub enum Arm {
     IterateNext,
     IterateDispose,
     Store,
+    /// `ctx.resource` — one resource instruction (`{op: "get"|"publish", kind, seq}`). Like
+    /// `store`, the arg is DATA the host resolves; unlike `store`, the answer is a locator the
+    /// guest can open (a path, or a reference the store minted), never a credential.
+    Resource,
     Emit,
     TimerRegister,
     TimerCancel,
@@ -219,12 +223,13 @@ pub enum Arm {
 }
 
 impl Arm {
-    pub const ALL: [Arm; 13] = [
+    pub const ALL: [Arm; 14] = [
         Arm::Invoke,
         Arm::IterateStart,
         Arm::IterateNext,
         Arm::IterateDispose,
         Arm::Store,
+        Arm::Resource,
         Arm::Emit,
         Arm::TimerRegister,
         Arm::TimerCancel,
@@ -242,6 +247,7 @@ impl Arm {
             Arm::IterateNext => "iterate.next",
             Arm::IterateDispose => "iterate.dispose",
             Arm::Store => "store",
+            Arm::Resource => "resource",
             Arm::Emit => "emit",
             Arm::TimerRegister => "timer.register",
             Arm::TimerCancel => "timer.cancel",
@@ -314,6 +320,18 @@ impl HostFrame {
             args: Value::Null,
             op: Some(op.clone()),
             raw: json!({ "type": "store", "op": op }),
+        }
+    }
+
+    /// The `resource` arm: one instruction (`{"op": "get"|"publish", "kind", "seq"}`) as data.
+    pub fn resource(op: Value) -> Self {
+        Self {
+            id: None,
+            call: None,
+            arm: Arm::Resource,
+            args: Value::Null,
+            op: Some(op.clone()),
+            raw: json!({ "type": "resource", "op": op }),
         }
     }
 

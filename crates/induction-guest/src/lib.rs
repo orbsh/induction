@@ -161,6 +161,14 @@ impl Ctx<'_> {
         self.send(HostFrame::store(op))
     }
 
+    /// `ctx.resource` — durable data, asked for at RUN time: `{"op": "get", "kind", "seq"}`
+    /// answers a path this process can open, `{"op": "publish", ...}` answers the reference the
+    /// store minted. The credential stays on the host side of this call; a script that knew it
+    /// could take the data anywhere.
+    pub fn resource(&mut self, op: Value) -> anyhow::Result<Value> {
+        self.send(HostFrame::resource(op))
+    }
+
     /// `ctx.iterate.start` — open a stream on a sibling booth (the consumer
     /// face of ADR-0034). The reply carries the first envelope with the
     /// realm-minted `stream_id` merged in.

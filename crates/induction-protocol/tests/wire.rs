@@ -156,6 +156,10 @@ fn arm_vocabulary_is_the_frozen_adr_0043_set() {
         "iterate.next",
         "iterate.dispose",
         "store",
+        // Added 2026-11-17: durable data asked for at RUN time (`ctx.resource`). It sits beside
+        // `store` on the same ctx object, and unlike a store instruction its answer is a locator
+        // the guest can open — the credential a transfer needs stays on the host's side.
+        "resource",
         "emit",
         "timer.register",
         "timer.cancel",

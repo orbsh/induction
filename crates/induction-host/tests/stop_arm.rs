@@ -44,7 +44,7 @@ fn the_arm_is_in_the_vocabulary_with_its_dotted_name() {
     assert_eq!(Arm::StopPoll.as_str(), "stop.poll");
     assert_eq!(
         Arm::ALL.len(),
-        13,
+        14,
         "the arm set is enumerated: adding one is a protocol decision, not a name"
     );
     assert!(Arm::StopPoll.has_reply(), "a bit has to come back as a value");

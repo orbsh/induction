@@ -42,6 +42,13 @@ pub trait HostOps: Send + Sync {
         declined("store")
     }
 
+    /// `ctx.resource` — durable data by name, `{op, kind, seq}`. The host answers a locator
+    /// (a path for `get`, a minted reference for `publish`); the credential a transfer needs
+    /// never leaves the host.
+    fn resource<'a>(&'a self, _op: &'a Value) -> OpsFuture<'a> {
+        declined("resource")
+    }
+
     /// `ctx.iterate.*` — stream arms (producer guard table lives guest-side).
     fn iterate<'a>(&'a self, arm: Arm, _args: &'a Value) -> OpsFuture<'a> {
         declined(arm.as_str())
@@ -137,6 +144,11 @@ pub async fn route_frame(ops: &dyn HostOps, frame: GuestFrame) -> Routed {
         },
         Arm::Store => Routed::Reply(
             ops.store(host.op.as_ref().unwrap_or(&Value::Null))
+                .await
+                .into_reply(),
+        ),
+        Arm::Resource => Routed::Reply(
+            ops.resource(host.op.as_ref().unwrap_or(&Value::Null))
                 .await
                 .into_reply(),
         ),
