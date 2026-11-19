@@ -9,7 +9,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use induction_protocol::{Arm, GuestFrame, InvokeCall, Reply, parse_guest_line};
+use induction_protocol::{Arm, FrameBytes, GuestFrame, InvokeCall, Reply, parse_guest_line};
 use serde_json::Value;
 
 /// A boxed, sendable future — keeps `HostOps` object-safe.
@@ -35,6 +35,26 @@ pub trait HostOps: Send + Sync {
         Err(format!(
             "arm `emit` is not implemented by this host (event `{event}` dropped)"
         ))
+    }
+
+    /// `ctx.emit` whose payload arrived as OPAQUE BYTES — a CBOR byte string, the one
+    /// value a `Value` cannot hold. `data` is the emit payload with `null` where the
+    /// bytes sat; `bytes` says where that was and what they are.
+    ///
+    /// The default is the FALLBACK, and it is the right one for every host that has not
+    /// opted into bytes: the payload goes back to its JSON spelling ([`FrameBytes::embed`])
+    /// at the same path and rides the ordinary [`HostOps::emit`]. So a host that knows
+    /// nothing about bytes sees the frame it has always seen, with no renegotiation and no
+    /// error — losing the compactness of one hop is a cost, losing the frame would be a bug.
+    fn emit_bytes(&self, event: &str, data: &Value, bytes: &FrameBytes) -> Result<(), String> {
+        let mut data = data.clone();
+        if !bytes.embed(&mut data) {
+            return Err(format!(
+                "emit arm: byte payload path {:?} is not in the frame (event `{event}`)",
+                bytes.path
+            ));
+        }
+        self.emit(event, &data)
     }
 
     /// `ctx.store` — one okm Collection instruction as data.
@@ -130,7 +150,13 @@ pub async fn route_frame(ops: &dyn HostOps, frame: GuestFrame) -> Routed {
                 .unwrap_or_default()
                 .to_string();
             let data = host.args.get("data").cloned().unwrap_or(Value::Null);
-            match ops.emit(&event, &data) {
+            // Bytes are the one payload a `Value` cannot hold, so they take their own
+            // seam; a frame without them is the frame it always was.
+            let served = match host.bytes {
+                Some(bytes) => ops.emit_bytes(&event, &data, &bytes),
+                None => ops.emit(&event, &data),
+            };
+            match served {
                 Ok(()) => Routed::Accepted,
                 Err(e) => {
                     eprintln!("[induction] emit arm failed: {e}");

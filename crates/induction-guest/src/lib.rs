@@ -68,9 +68,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
 use induction_protocol::{
-    Arm, CallFrame, ENCODING_ENV, Encoding, FrameKind, Hello, HostFrame, InterruptFrame, Reply,
-    ResultFrame, SCHEMA_EVENT, Schema,
+    Arm, CallFrame, Encoding, FrameKind, Hello, HostFrame, InterruptFrame, Reply, ResultFrame,
+    SCHEMA_EVENT, Schema,
 };
+/// The environment variable a guest reads to learn which codec its parent DECLARED
+/// (`INDUCTION_ENCODING`). Re-exported because a guest that reports its own capability (a
+/// booth telling its venue what it can produce) must read the same name the parent wrote —
+/// and inventing the literal in a second crate is how two spellings of one contract happen.
+pub use induction_protocol::ENCODING_ENV;
 use serde_json::Value;
 
 // ------------------------------------------------------------ ctx --
@@ -143,6 +148,7 @@ impl Ctx<'_> {
             args: Value::Null,
             op: None,
             raw: serde_json::json!({ "type": "invoke", "verb": verb, "args": args }),
+            bytes: None,
         })
     }
 
@@ -153,6 +159,23 @@ impl Ctx<'_> {
             serde_json::json!({ "event": event, "data": data }),
         );
         self.io.write(&frame.to_value())
+    }
+
+    /// `ctx.emit` for a payload that is already ENCODED — the byte-carrying twin of
+    /// [`Ctx::emit`], and the whole reason the content codec is an axis rather than a
+    /// second output mode: a guest assembles its content once (a `Value`) and hands it
+    /// here in whichever encoding the deployment asked for.
+    ///
+    /// `emit` is untouched, so every existing caller keeps the exact frame it had. On a CBOR
+    /// link these bytes go out as a CBOR BYTE STRING ([`cbor_payload`]'s JSON spelling is what
+    /// [`CborWriter`] resolves into one); on a JSON link — the fallback, because JSON text
+    /// cannot hold binary — they ride as `{"$cbor": "<base64>"}`.
+    ///
+    /// The receiver tells the two apart with no out-of-band configuration: encoded content
+    /// arrives as an object whose ONLY key is [`CBOR_PAYLOAD_KEY`], and a CBOR peer's lift
+    /// says the same thing with the bytes in hand.
+    pub fn emit_bytes(&mut self, event: &str, bytes: &[u8]) -> anyhow::Result<()> {
+        self.emit(event, cbor_payload(bytes))
     }
 
     /// `ctx.store` — one collection instruction as data (the guest never parses
@@ -268,6 +291,15 @@ impl Ctx<'_> {
     }
 }
 
+// ---------------------------------------------------- content codec --
+
+// The payload spelling (the `$cbor` key, its base64 JSON mapping, and the reverse read)
+// lives in the protocol crate now — one home, because gravity's booth, prism's funnel and
+// this facade all read it. A CBOR link writes a real BYTE STRING for it; JSON text cannot
+// hold binary, so a JSON link keeps the base64 mapping. Same payload, two spellings,
+// chosen by the codec the deployment declared — never by configuration.
+pub use induction_protocol::{CBOR_PAYLOAD_KEY, cbor_payload, payload_bytes};
+
 // ------------------------------------------------------------ channel --
 
 /// How a `Value` crosses the pipe inbound. The shape under both codecs is
@@ -316,7 +348,19 @@ struct CborReader<R: std::io::Read> {
 
 impl<R: std::io::Read> FrameReader for CborReader<R> {
     fn read(&mut self) -> Option<Value> {
-        ciborium::de::from_reader(&mut self.reader).ok()
+        // Read the tree with bytes intact, then put an opaque payload back into its JSON
+        // spelling: a `Value`-typed reader has no other way to hold binary, and this is the
+        // exact shape a JSON link carries. Reading a frame a CBOR peer wrote therefore yields
+        // the frame its JSON peer would have written — the codec is a transport fact, not a
+        // difference the frame's consumers can see.
+        let doc = ciborium::de::from_reader::<ciborium::Value, _>(&mut self.reader).ok()?;
+        let (mut frame, bytes) = induction_protocol::split_bytes(doc).ok()?;
+        if let Some(bytes) = bytes
+            && !bytes.embed(&mut frame)
+        {
+            return None;
+        }
+        Some(frame)
     }
 }
 
@@ -326,7 +370,17 @@ struct CborWriter<W: Write> {
 
 impl<W: Write + Send> FrameWriter for CborWriter<W> {
     fn write(&mut self, v: &Value) -> anyhow::Result<()> {
-        ciborium::ser::into_writer(v, &mut self.out)?;
+        // A frame with an opaque payload writes the BYTE STRING, not its base64 JSON spelling
+        // ([`induction_protocol::cbor_frame`] does the substitution). This is the whole reason
+        // `emit_bytes` needs no new API: the payload the caller builds — `cbor_payload`, the
+        // JSON mapping — becomes real bytes on a CBOR link and stays text on a JSON one. A
+        // frame with no payload skips the tree rebuild entirely and goes out exactly as before.
+        if induction_protocol::carries_payload(v) {
+            let doc = induction_protocol::cbor_frame(v).map_err(anyhow::Error::msg)?;
+            ciborium::ser::into_writer(&doc, &mut self.out)?;
+        } else {
+            ciborium::ser::into_writer(v, &mut self.out)?;
+        }
         self.out.flush()?;
         Ok(())
     }
@@ -844,3 +898,186 @@ impl Worker {
 
 /// Re-export for guests that want the arm vocabulary.
 pub use induction_protocol::{Arm as CtxArm, SCHEMA_EVENT as SCHEMA_EVENT_NAME};
+
+// -------------------------------------------------------------- tests --
+
+#[cfg(test)]
+mod tests {
+    //! The codec axis, proved where it is built: one content value, sent through BOTH
+    //! `emit` paths over a REAL CborWriter/CborReader pair (the pipe a deployed guest
+    //! has), and the two decoded contents compared for EQUALITY — not merely for parsing.
+
+    use super::*;
+    use std::io::Cursor;
+
+    /// A writer whose bytes the test can read back: the pipe, minus the process.
+    #[derive(Clone, Default)]
+    struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("sink").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// One content value with the shapes gravity's frames actually carry.
+    fn content() -> Value {
+        serde_json::json!({
+            "name": "ui:turn.done",
+            "island": "gravity-model",
+            "turn": "7",
+            "data": [{ "action": "append", "slot": "messages", "data": { "id": "7_1", "type": "frame" } }],
+        })
+    }
+
+    /// Drive one ctx over a fresh channel, run `f`, and hand back every frame the pipe
+    /// received, decoded the way the guest's own reader decodes them.
+    fn emit_through_cbor_pipe(f: impl FnOnce(&mut Ctx)) -> Vec<Value> {
+        let sink = Sink::default();
+        let channel = Channel::new(Box::new(CborWriter {
+            out: sink.clone(),
+        }));
+        {
+            let mut ctx = Ctx {
+                io: &channel,
+                cancel: CancelToken::default(),
+                call: 1,
+            };
+            f(&mut ctx);
+        }
+        let bytes = sink.0.lock().expect("sink").clone();
+        let mut reader = CborReader {
+            reader: Cursor::new(bytes),
+        };
+        let mut frames = Vec::new();
+        while let Some(frame) = reader.read() {
+            frames.push(frame);
+        }
+        frames
+    }
+
+    /// THE POINT OF THE WHOLE EXERCISE: the same content, encoded both ways, decodes to the
+    /// SAME value. The CBOR frame carries `{"$cbor": …}`; the JSON frame carries the envelope
+    /// itself. Neither needs to be told which it is — the shape says.
+    #[test]
+    fn both_encodings_decode_to_the_same_content() {
+        let content = content();
+        let cbor_document = {
+            let mut buf = Vec::new();
+            ciborium::into_writer(&content, &mut buf).expect("cbor document");
+            buf
+        };
+
+        let frames = emit_through_cbor_pipe(|ctx| {
+            ctx.emit("ui:turn.done", content.clone()).expect("emit");
+            ctx.emit_bytes("ui:turn.done", &cbor_document)
+                .expect("emit_bytes");
+        });
+        assert_eq!(frames.len(), 2, "one frame each: {frames:?}");
+
+        let plain = frames[0]["host"]["args"].clone();
+        let encoded = frames[1]["host"]["args"].clone();
+        assert_eq!(plain["event"], "ui:turn.done");
+        assert_eq!(encoded["event"], "ui:turn.done");
+
+        // The discriminator: a plain envelope is a map with `name`/`island`/`data`; encoded
+        // content is a map whose ONLY key is the reserved one.
+        assert!(
+            super::payload_bytes(&plain["data"]).is_none(),
+            "the JSON path must not look encoded: {}",
+            plain["data"]
+        );
+        let bytes = super::payload_bytes(&encoded["data"]).expect("the byte path is tagged");
+        assert_eq!(bytes, cbor_document, "the bytes survive the wrapper verbatim");
+
+        // …and the two decoded contents are EQUAL.
+        let from_bytes: Value = ciborium::from_reader(bytes.as_slice()).expect("decode");
+        assert_eq!(from_bytes, content);
+        assert_eq!(
+            from_bytes, plain["data"],
+            "the CBOR path decodes to exactly what the JSON path sent"
+        );
+    }
+
+    /// NO BASE64 ON THE CBOR PATH: the payload's own bytes are on the wire, contiguously, and
+    /// the wrapper's text is nowhere in them. This is the measurement the whole change exists
+    /// for — the wrapper costs a third of the payload, and a CBOR link does not need it.
+    #[test]
+    fn a_cbor_link_carries_the_payload_as_a_byte_string() {
+        // Long enough that a 4- or 8-character base64 fragment could not appear by accident,
+        // and not text, so no codec could have chosen the readable spelling.
+        let document: Vec<u8> = (0u16..96).map(|i| (i * 7 % 251) as u8).collect();
+        let sink = Sink::default();
+        let channel = Channel::new(Box::new(CborWriter {
+            out: sink.clone(),
+        }));
+        {
+            let mut ctx = Ctx {
+                io: &channel,
+                cancel: CancelToken::default(),
+                call: 1,
+            };
+            ctx.emit_bytes("ui:x", &document).expect("emit_bytes");
+        }
+        let wire = sink.0.lock().expect("sink").clone();
+
+        assert!(
+            wire.windows(document.len()).any(|w| w == document.as_slice()),
+            "the payload's bytes are on the wire"
+        );
+        let base64 = super::cbor_payload(&document)[super::CBOR_PAYLOAD_KEY]
+            .as_str()
+            .expect("the mapping holds base64 text")
+            .to_string();
+        assert!(
+            !wire
+                .windows(base64.len())
+                .any(|w| w == base64.as_bytes()),
+            "a CBOR link must not carry the base64 spelling"
+        );
+
+        // And the frame a `Value`-typed reader sees is the frame a JSON peer would have sent:
+        // the lift is a transport fact, not a shape its consumers can observe.
+        let mut reader = CborReader {
+            reader: Cursor::new(wire),
+        };
+        let frame = reader.read().expect("one frame");
+        assert_eq!(
+            super::payload_bytes(&frame["host"]["args"]["data"]),
+            Some(document),
+            "the reader puts the payload back in the only spelling a `Value` has"
+        );
+    }
+
+    /// The axis is orthogonal to the PIPE encoding: `emit_bytes` is legal on a JSON-lines
+    /// link too, because its payload is JSON-shaped. A deployment that switches content
+    /// codec must not be forced to switch the frame codec with it.
+    #[test]
+    fn the_byte_path_crosses_a_json_link_unchanged() {
+        let sink = Sink::default();
+        let channel = Channel::new(Box::new(JsonWriter {
+            out: sink.clone(),
+        }));
+        let document = vec![0x81, 0x01];
+        {
+            let mut ctx = Ctx {
+                io: &channel,
+                cancel: CancelToken::default(),
+                call: 1,
+            };
+            ctx.emit_bytes("ui:x", &document).expect("emit_bytes");
+        }
+        let bytes = sink.0.lock().expect("sink").clone();
+        let mut reader = JsonReader {
+            reader: std::io::BufReader::new(Cursor::new(bytes)),
+        };
+        let frame = reader.read().expect("one line");
+        let data = frame["host"]["args"]["data"].clone();
+        assert_eq!(super::payload_bytes(&data), Some(document.clone()));
+        assert_eq!(super::cbor_payload(&document), data, "one wrapper, both codecs");
+    }
+}

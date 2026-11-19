@@ -7,6 +7,8 @@
 
 use serde_json::{Value, json};
 
+use crate::payload::FrameBytes;
+
 // ---------------------------------------------------------------- kinds --
 
 /// A parent → child request kind.
@@ -293,6 +295,13 @@ pub struct HostFrame {
     pub args: Value,
     pub op: Option<Value>,
     pub raw: Value,
+    /// Set when this frame's payload arrived as a CBOR BYTE STRING — the one value a
+    /// `serde_json::Value` cannot hold. `args` keeps the frame's JSON shape with `null` where the
+    /// bytes sat; this says where that was and what the bytes are ([`FrameBytes`]).
+    ///
+    /// `None` on every frame a JSON peer can send, and on every frame sent before bytes existed:
+    /// the JSON spelling of a payload is an object inside `args`, not a lift.
+    pub bytes: Option<FrameBytes>,
 }
 
 impl HostFrame {
@@ -308,6 +317,7 @@ impl HostFrame {
             args,
             op: None,
             raw: host,
+            bytes: None,
         }
     }
 
@@ -320,6 +330,7 @@ impl HostFrame {
             args: Value::Null,
             op: Some(op.clone()),
             raw: json!({ "type": "store", "op": op }),
+            bytes: None,
         }
     }
 
@@ -332,6 +343,7 @@ impl HostFrame {
             args: Value::Null,
             op: Some(op.clone()),
             raw: json!({ "type": "resource", "op": op }),
+            bytes: None,
         }
     }
 
@@ -340,6 +352,14 @@ impl HostFrame {
     /// decodes it unchanged and simply answers without echoing it.
     pub fn with_id(mut self, id: u64) -> Self {
         self.set_id(id);
+        self
+    }
+
+    /// Attach the opaque bytes this frame carried — the READER's lift ([`crate::split_bytes`]).
+    /// The bytes keep the path they occupied, so a host that cannot take them can put the JSON
+    /// spelling back where it was and see exactly the frame it always saw.
+    pub fn with_bytes(mut self, bytes: Option<FrameBytes>) -> Self {
+        self.bytes = bytes;
         self
     }
 
@@ -384,6 +404,10 @@ impl HostFrame {
             args: host.get("args").cloned().unwrap_or(Value::Null),
             op: host.get("op").cloned(),
             raw: host.clone(),
+            // A `Value` has no bytes to lift: the caller that decoded a CBOR document attaches
+            // them (`split_bytes` says which frame they belong to). Keeping the field here as
+            // `None` is what makes a JSON peer's frame byte-identical to what it always was.
+            bytes: None,
         })
     }
 }

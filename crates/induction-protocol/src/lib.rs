@@ -55,12 +55,17 @@
 
 pub mod encoding;
 pub mod frame;
+pub mod payload;
 pub mod schema;
 
 pub use encoding::{ENCODING_ENV, Encoding};
 pub use frame::{
     Arm, CallFrame, FrameKind, GuestFrame, HostFrame, INTERRUPT_TYPE, InterruptFrame, InvokeCall,
     IterateKind, Reply, ResultFrame, parse_guest_line, parse_guest_value, parse_host_reply,
+};
+pub use payload::{
+    CBOR_PAYLOAD_KEY, FrameBytes, cbor_frame, cbor_payload, carries_payload, payload_bytes,
+    split_bytes,
 };
 pub use schema::{Hello, SCHEMA_EVENT, Schema, initialize_line};
 
