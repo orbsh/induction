@@ -233,11 +233,16 @@ impl Ctx<'_> {
         self.send(HostFrame::new(Arm::Schema, Value::Null))
     }
 
-    /// `ctx.timer.register` → the timer id.
-    pub fn timer_register(&mut self, at_ms: u64, tag: &str) -> anyhow::Result<u64> {
+    /// `ctx.timer.register` → the timer id. `at_ms` is a delay FROM NOW, and `durable`
+    /// asks the host to keep the schedule where a restart can find it (aura ADR-0016 §1:
+    /// ns 27 rows the driver rebuilds the wheel from at boot) instead of only in the
+    /// wheel, which dies with the process. Whether a host keeps such a table is the
+    /// host's business — the guest cannot tell, so a wake is as durable as the host it
+    /// asked, and the row is the only evidence either way.
+    pub fn timer_register(&mut self, at_ms: u64, tag: &str, durable: bool) -> anyhow::Result<u64> {
         let v = self.send(HostFrame::new(
             Arm::TimerRegister,
-            serde_json::json!({ "at_ms": at_ms, "tag": tag }),
+            timer_args(at_ms, tag, durable),
         ))?;
         Ok(v.get("timer_id").and_then(Value::as_u64).unwrap_or(0))
     }
@@ -596,8 +601,11 @@ impl Guest {
         self
     }
 
-    /// Register a reserved lifecycle hook (`__sleep` / `__wake` only). Lands in
-    /// the schema's `hooks` array, never in `receives`.
+    /// Register a reserved name the HOST delivers, never the venue: `__sleep` /
+    /// `__wake` (residency) and `__on_timer` (a due timer, which aura delivers as an
+    /// ordinary queue job whose handler is that reserved name — ADR-0016 §1). Lands in
+    /// the schema's `hooks` array, never in `receives`, because a name the host owns
+    /// must not also be a name somebody can emit.
     pub fn hook(
         mut self,
         name: impl Into<String>,
@@ -605,8 +613,8 @@ impl Guest {
     ) -> Self {
         let name = name.into();
         assert!(
-            matches!(name.as_str(), "__sleep" | "__wake"),
-            "hook name `{name}` is not reserved (allowed: [\"__sleep\", \"__wake\"])"
+            matches!(name.as_str(), "__sleep" | "__wake" | "__on_timer"),
+            "hook name `{name}` is not reserved (allowed: [\"__sleep\", \"__wake\", \"__on_timer\"])"
         );
         if !self.registry.hooks.contains(&name) {
             self.registry.hooks.push(name.clone());
@@ -896,6 +904,15 @@ impl Worker {
     }
 }
 
+/// The `timer.register` argument object, built in one place so the wire shape is
+/// assertable without a pipe: the host reads `at_ms` as a delay from now, `tag` as the
+/// string it hands back with the wake, and `durable` as "keep this where a restart can
+/// find it". A host that knows only the first two ignores the third rather than failing —
+/// which is why the guest cannot report durability, only ask for it.
+fn timer_args(at_ms: u64, tag: &str, durable: bool) -> Value {
+    serde_json::json!({ "at_ms": at_ms, "tag": tag, "durable": durable })
+}
+
 /// Re-export for guests that want the arm vocabulary.
 pub use induction_protocol::{Arm as CtxArm, SCHEMA_EVENT as SCHEMA_EVENT_NAME};
 
@@ -1080,4 +1097,17 @@ mod tests {
         assert_eq!(super::payload_bytes(&data), Some(document.clone()));
         assert_eq!(super::cbor_payload(&document), data, "one wrapper, both codecs");
     }
+    /// The durable flag is part of the arm, not a host detail: a booth asks for a schedule
+    /// that outlives its own process, and the frame must say so (aura ADR-0016 §1 — ns 27
+    /// rows; the wheel alone dies with the process).
+    #[test]
+    fn the_timer_arm_carries_the_durable_ask() {
+        let args = timer_args(600_000, "compress:7", true);
+        assert_eq!(args["at_ms"], serde_json::json!(600_000));
+        assert_eq!(args["tag"], serde_json::json!("compress:7"));
+        assert_eq!(args["durable"], serde_json::json!(true));
+        // The default the caller writes out: a memory-tier wake says so rather than omitting.
+        assert_eq!(timer_args(1, "t", false)["durable"], serde_json::json!(false));
+    }
+
 }
