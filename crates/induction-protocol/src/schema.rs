@@ -23,6 +23,16 @@ use std::collections::BTreeMap;
 /// The event name whose `call` frame asks for the schema.
 pub const SCHEMA_EVENT: &str = "interface_schema";
 
+/// The names the HOST delivers and a venue may never emit: residency's `__sleep` /
+/// `__wake`, and the timer plane's `__on_timer` (a due timer arrives as an ordinary
+/// queue job whose handler is that name — aura ADR-0016 §1). They land in the schema's
+/// `hooks` array and never in `receives`.
+///
+/// ONE array, because the copy list is how a name gets accepted by one carrier and
+/// refused by the next: aura's booth builder and effector's python and steel carriers
+/// re-export this constant instead of spelling it again.
+pub const RESERVED_HOOKS: &[&str] = &["__sleep", "__wake", "__on_timer"];
+
 /// The assembled declaration: receives / wildcard_receives / hooks / storage.
 ///
 /// A subscription's own knobs (`key`, and whether the event needs a bound user) ride ITS entry in

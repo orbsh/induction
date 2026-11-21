@@ -612,9 +612,13 @@ impl Guest {
         h: impl Fn(&mut Ctx, Value) -> anyhow::Result<Value> + Send + Sync + 'static,
     ) -> Self {
         let name = name.into();
+        // One array, defined where the declaration surface lives (induction-protocol):
+        // every carrier reads the same names, so a hook cannot be accepted here and refused
+        // by the carrier that ships the same guest.
         assert!(
-            matches!(name.as_str(), "__sleep" | "__wake" | "__on_timer"),
-            "hook name `{name}` is not reserved (allowed: [\"__sleep\", \"__wake\", \"__on_timer\"])"
+            induction_protocol::schema::RESERVED_HOOKS.contains(&name.as_str()),
+            "hook name `{name}` is not reserved (allowed: {:?})",
+            induction_protocol::schema::RESERVED_HOOKS
         );
         if !self.registry.hooks.contains(&name) {
             self.registry.hooks.push(name.clone());
