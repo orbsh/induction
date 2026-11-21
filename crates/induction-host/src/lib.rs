@@ -71,18 +71,19 @@
     )
 )]
 
+pub mod link;
 pub mod ops;
 pub mod process;
-pub mod link;
 pub mod supervise;
 
 pub use induction_protocol::parse_guest_value;
 pub use induction_protocol::{
-    Arm, CallFrame, Encoding, FrameKind, INTERRUPT_TYPE, InterruptFrame, InvokeCall, IterateKind, Reply,
+    Arm, CallFrame, Encoding, FrameKind, INTERRUPT_TYPE, InterruptFrame, InvokeCall, IterateKind,
+    Reply,
 };
+pub use link::{Budgets, Link, Reader, Writer};
 pub use ops::{HostOps, OpsFuture, Routed, route_frame, route_line, route_line_tagged};
 pub use process::{Process, Spec, spawn};
-pub use link::{Budgets, Reader, Link, Writer};
 pub use supervise::{DEFAULT_BACKOFF, Outcome, run_driver, run_process, spawn_only, supervise};
 
 /// The protocol revision this host speaks.

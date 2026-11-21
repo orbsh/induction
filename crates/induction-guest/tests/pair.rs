@@ -26,7 +26,9 @@
 use std::time::Duration;
 
 use induction_host::{Budgets, HostOps, InvokeCall, OpsFuture, Routed, Spec, route_line, spawn};
-use induction_protocol::{CallFrame, GuestFrame, InterruptFrame, IterateKind, Reply, parse_guest_line};
+use induction_protocol::{
+    CallFrame, GuestFrame, InterruptFrame, IterateKind, Reply, parse_guest_line,
+};
 use serde_json::{Value, json};
 
 /// A host whose only arm is `invoke`: the minimal complete host.
@@ -90,12 +92,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             )
             .await
     );
-    let line = process
-        .link
-        .reader
-        .next_line(b.read)
-        .await
-        .expect("schema");
+    let line = process.link.reader.next_line(b.read).await.expect("schema");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => {
             assert!(r.result["receives"]["echo"].is_object());
@@ -115,12 +112,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             )
             .await
     );
-    let line = process
-        .link
-        .reader
-        .next_line(b.read)
-        .await
-        .expect("echo");
+    let line = process.link.reader.next_line(b.read).await.expect("echo");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert_eq!(r.result, json!({ "echo": { "n": 1 } })),
         other => panic!("expected a result frame, got {other:?}"),
@@ -133,12 +125,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .write_line(&CallFrame::call(3, "boom", Value::Null).to_line(), b.write)
             .await
     );
-    let line = process
-        .link
-        .reader
-        .next_line(b.read)
-        .await
-        .expect("boom");
+    let line = process.link.reader.next_line(b.read).await.expect("boom");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert!(
             r.result
@@ -182,12 +169,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .write_line(&reply.to_line(), b.write)
             .await
     );
-    let line = process
-        .link
-        .reader
-        .next_line(b.read)
-        .await
-        .expect("answer");
+    let line = process.link.reader.next_line(b.read).await.expect("answer");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => {
             assert_eq!(r.id, json!(4));
@@ -237,8 +219,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             .link
             .writer
             .write_line(
-                &Reply::ok(json!("/work/resources/org/repo"))
-                    .to_line_with_id(id.unwrap_or(0)),
+                &Reply::ok(json!("/work/resources/org/repo")).to_line_with_id(id.unwrap_or(0)),
                 b.write
             )
             .await
@@ -272,12 +253,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
             )
             .await
     );
-    let line = process
-        .link
-        .reader
-        .next_line(b.read)
-        .await
-        .expect("start");
+    let line = process.link.reader.next_line(b.read).await.expect("start");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert_eq!(r.result["total"], 3),
         other => panic!("expected a result frame, got {other:?}"),
@@ -294,12 +270,7 @@ async fn the_guest_crate_and_the_host_crate_speak_the_same_protocol() {
                 )
                 .await
         );
-        let line = process
-            .link
-            .reader
-            .next_line(b.read)
-            .await
-            .expect("pull");
+        let line = process.link.reader.next_line(b.read).await.expect("pull");
         match parse_guest_line(&line) {
             Some(GuestFrame::Result(r)) => {
                 assert_eq!(r.result["item"], expect_item, "round {round}");
@@ -392,12 +363,9 @@ async fn two_requests_run_at_once_and_each_waits_on_its_own_reply() {
                 };
                 assert!(process.link.writer.write_line(&line, b.write).await);
             }
-            Some(GuestFrame::Result(r)) => answered.push(
-                r.result["who"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string(),
-            ),
+            Some(GuestFrame::Result(r)) => {
+                answered.push(r.result["who"].as_str().unwrap_or_default().to_string())
+            }
             other => panic!("expected a result or a call, got {other:?}"),
         }
     }
@@ -464,7 +432,10 @@ async fn a_guest_reads_the_stop_bit_the_host_holds() {
         process
             .link
             .writer
-            .write_line(&CallFrame::call(1, "stopped", Value::Null).to_line(), b.write)
+            .write_line(
+                &CallFrame::call(1, "stopped", Value::Null).to_line(),
+                b.write
+            )
             .await
     );
 
@@ -497,7 +468,12 @@ async fn a_guest_reads_the_stop_bit_the_host_holds() {
             .write_line(&Reply::ok(Value::Bool(true)).to_line_with_id(id), b.write)
             .await
     );
-    let line = process.link.reader.next_line(b.read).await.expect("the result");
+    let line = process
+        .link
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("the result");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => assert_eq!(r.result, json!({ "stopped": true })),
         other => panic!("expected a result frame, got {other:?}"),
@@ -600,7 +576,10 @@ async fn an_interrupt_frame_reaches_a_handler_that_is_still_running() {
         process
             .link
             .writer
-            .write_line(&CallFrame::call(9, "waiting", Value::Null).to_line(), b.write)
+            .write_line(
+                &CallFrame::call(9, "waiting", Value::Null).to_line(),
+                b.write
+            )
             .await
     );
     // The loop is reading while the handler waits — that is the whole reason this
@@ -609,18 +588,29 @@ async fn an_interrupt_frame_reaches_a_handler_that_is_still_running() {
         process
             .link
             .writer
-            .write_line(
-                &InterruptFrame::new(9).to_value().to_string(),
-                b.write
-            )
+            .write_line(&InterruptFrame::new(9).to_value().to_string(), b.write)
             .await
     );
 
-    let line = process.link.reader.next_line(b.read).await.expect("the result");
+    let line = process
+        .link
+        .reader
+        .next_line(b.read)
+        .await
+        .expect("the result");
     match parse_guest_line(&line) {
         Some(GuestFrame::Result(r)) => {
-            assert_eq!(r.result.get("cancelled"), Some(&Value::Bool(true)), "{:?}", r.result);
-            let ms = r.result.get("ms").and_then(Value::as_u64).unwrap_or(u64::MAX);
+            assert_eq!(
+                r.result.get("cancelled"),
+                Some(&Value::Bool(true)),
+                "{:?}",
+                r.result
+            );
+            let ms = r
+                .result
+                .get("ms")
+                .and_then(Value::as_u64)
+                .unwrap_or(u64::MAX);
             assert!(ms < 2000, "the handler was woken, not waited out: {ms} ms");
         }
         other => panic!("expected a result frame, got {other:?}"),

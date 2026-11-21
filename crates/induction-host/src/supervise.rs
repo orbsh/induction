@@ -15,9 +15,9 @@ use std::time::Duration;
 use induction_protocol::CallFrame;
 use tokio::sync::mpsc;
 
+use crate::link::{Budgets, Link};
 use crate::ops::{HostOps, Routed, route_line_tagged};
 use crate::process::{Process, Spec, spawn};
-use crate::link::{Budgets, Link};
 
 /// Why a link ended. Every variant is a supervisor's input, not an error
 /// value for the guest.
@@ -115,9 +115,9 @@ where
                 None => return Outcome::ShuttingDown,
             },
             Step::Line(line) => match line {
-                Some(line) => inflight.push(Box::pin(async move {
-                    route_line_tagged(ops, &line).await
-                })),
+                Some(line) => {
+                    inflight.push(Box::pin(async move { route_line_tagged(ops, &line).await }))
+                }
                 None => return Outcome::GuestGone,
             },
         }

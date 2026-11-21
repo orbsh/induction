@@ -6,7 +6,7 @@
 //! negative: a host that has no stop bits must SAY SO instead of answering
 //! `false`, because a false "no" is a stop that silently never lands.
 
-use induction_host::{route_line_tagged, HostOps, InvokeCall, OpsFuture, Routed};
+use induction_host::{HostOps, InvokeCall, OpsFuture, Routed, route_line_tagged};
 use induction_protocol::{Arm, Reply};
 use serde_json::{Value, json};
 
@@ -47,7 +47,10 @@ fn the_arm_is_in_the_vocabulary_with_its_dotted_name() {
         14,
         "the arm set is enumerated: adding one is a protocol decision, not a name"
     );
-    assert!(Arm::StopPoll.has_reply(), "a bit has to come back as a value");
+    assert!(
+        Arm::StopPoll.has_reply(),
+        "a bit has to come back as a value"
+    );
 }
 
 #[tokio::test]

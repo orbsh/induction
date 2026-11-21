@@ -64,7 +64,7 @@ pub use frame::{
     IterateKind, Reply, ResultFrame, parse_guest_line, parse_guest_value, parse_host_reply,
 };
 pub use payload::{
-    CBOR_PAYLOAD_KEY, FrameBytes, cbor_frame, cbor_payload, carries_payload, payload_bytes,
+    CBOR_PAYLOAD_KEY, FrameBytes, carries_payload, cbor_frame, cbor_payload, payload_bytes,
     split_bytes,
 };
 pub use schema::{Hello, SCHEMA_EVENT, Schema, initialize_line};

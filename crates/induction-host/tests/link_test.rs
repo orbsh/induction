@@ -80,8 +80,7 @@ async fn handshake_and_round_trip_over_a_duplex() {
     assert!(hello.schema.receives("ping"));
 
     assert!(
-        link
-            .writer
+        link.writer
             .write_line(
                 &CallFrame::call(1, "ping", json!(null)).to_line(),
                 budgets.write
@@ -110,12 +109,7 @@ async fn a_missing_handshake_refuses_the_link() {
     drop(guest_side); // peer gone before hello
     let (r, w) = tokio::io::split(host_side);
     let mut link = induction_host::Link::new(r, w);
-    assert!(
-        link
-            .handshake(Duration::from_millis(200))
-            .await
-            .is_none()
-    );
+    assert!(link.handshake(Duration::from_millis(200)).await.is_none());
 }
 
 #[tokio::test]
@@ -474,7 +468,9 @@ async fn two_call_guest(
             json!({ "stream_id": stream }),
         )
         .with_id(id);
-        let _ = w.write_all(format!("{}\n", frame.to_line()).as_bytes()).await;
+        let _ = w
+            .write_all(format!("{}\n", frame.to_line()).as_bytes())
+            .await;
     }
     for _ in 0..2 {
         line.clear();
@@ -502,7 +498,10 @@ async fn the_driver_routes_two_guest_calls_at_once() {
     assert!(link.handshake(budgets.handshake).await.is_some());
 
     let (events_tx, mut events) = tokio::sync::mpsc::channel::<CallFrame>(1);
-    let driver = tokio::spawn(async move { run_driver(&mut link, &SlowStreams, &mut events, budgets).await });
+    let driver =
+        tokio::spawn(
+            async move { run_driver(&mut link, &SlowStreams, &mut events, budgets).await },
+        );
 
     // The fast call's reply carries its own id and arrives first, even though
     // the slow call was read first.

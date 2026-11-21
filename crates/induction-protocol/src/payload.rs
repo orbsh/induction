@@ -60,9 +60,7 @@ pub fn payload_bytes(data: &Value) -> Option<Vec<u8>> {
     if object.len() != 1 {
         return None;
     }
-    BASE64
-        .decode(object.get(CBOR_PAYLOAD_KEY)?.as_str()?)
-        .ok()
+    BASE64.decode(object.get(CBOR_PAYLOAD_KEY)?.as_str()?).ok()
 }
 
 /// One frame's opaque bytes: WHERE they sat and what they were.

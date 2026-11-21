@@ -322,9 +322,12 @@ fn schema_event_name_is_frozen() {
 #[test]
 fn schema_rich_form_round_trips_and_subscription_is_exact() {
     let s = Schema {
-        receives: [("a:b".to_string(), serde_json::json!({"key": "user_id", "auth": true}))]
-            .into_iter()
-            .collect(),
+        receives: [(
+            "a:b".to_string(),
+            serde_json::json!({"key": "user_id", "auth": true}),
+        )]
+        .into_iter()
+        .collect(),
         wildcard_receives: vec!["a:*".into()],
         hooks: vec!["__wake".into()],
         storage: Some(serde_json::json!({"collections": {}})),

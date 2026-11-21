@@ -2,7 +2,7 @@
 //! locator. Two cases, and the second one is the interesting half — a host that cannot serve the
 //! arm must SAY SO rather than answer something that looks like a path.
 
-use induction_host::{InvokeCall, HostOps, OpsFuture, Routed, route_line};
+use induction_host::{HostOps, InvokeCall, OpsFuture, Routed, route_line};
 use induction_protocol::Reply;
 use serde_json::{Value, json};
 

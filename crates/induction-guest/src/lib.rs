@@ -67,15 +67,15 @@ use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
-use induction_protocol::{
-    Arm, CallFrame, Encoding, FrameKind, Hello, HostFrame, InterruptFrame, Reply, ResultFrame,
-    SCHEMA_EVENT, Schema,
-};
 /// The environment variable a guest reads to learn which codec its parent DECLARED
 /// (`INDUCTION_ENCODING`). Re-exported because a guest that reports its own capability (a
 /// booth telling its venue what it can produce) must read the same name the parent wrote —
 /// and inventing the literal in a second crate is how two spellings of one contract happen.
 pub use induction_protocol::ENCODING_ENV;
+use induction_protocol::{
+    Arm, CallFrame, Encoding, FrameKind, Hello, HostFrame, InterruptFrame, Reply, ResultFrame,
+    SCHEMA_EVENT, Schema,
+};
 use serde_json::Value;
 
 // ------------------------------------------------------------ ctx --
@@ -258,10 +258,7 @@ impl Ctx<'_> {
 
     /// `ctx.queue.depth` — the backlog point-read.
     pub fn queue_depth(&mut self, event: &str) -> anyhow::Result<u64> {
-        let v = self.send(HostFrame::new(
-            Arm::QueueDepth,
-            Value::String(event.into()),
-        ))?;
+        let v = self.send(HostFrame::new(Arm::QueueDepth, Value::String(event.into())))?;
         Ok(v.as_u64().unwrap_or(0))
     }
 
@@ -707,8 +704,7 @@ impl Guest {
         let streams: Streams = Arc::new(Mutex::new(HashMap::new()));
         // The call table for stage two (ADR-0047): raised by the loop, read by the
         // handler. Nothing here is a delivery — the handler is a plain function.
-        let cancels: Arc<Mutex<HashMap<u64, CancelToken>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let cancels: Arc<Mutex<HashMap<u64, CancelToken>>> = Arc::new(Mutex::new(HashMap::new()));
 
         // The serial worker. Even a serial guest needs one: the reader loop must
         // stay free to deliver replies while a handler waits on its id.
@@ -772,9 +768,8 @@ impl Guest {
                 continue;
             };
             if req.event == SCHEMA_EVENT {
-                channel.write(
-                    &ResultFrame::new(Value::from(req.id), schema.to_value()).to_value(),
-                )?;
+                channel
+                    .write(&ResultFrame::new(Value::from(req.id), schema.to_value()).to_value())?;
                 continue;
             }
             if concurrent {
@@ -848,10 +843,7 @@ impl Worker {
             .channel
             .write(&ResultFrame::new(Value::from(req.id), result).to_value())
         {
-            eprintln!(
-                "[induction-guest] could not answer call {}: {e}",
-                req.id
-            );
+            eprintln!("[induction-guest] could not answer call {}: {e}", req.id);
         }
     }
 
@@ -959,9 +951,7 @@ mod tests {
     /// received, decoded the way the guest's own reader decodes them.
     fn emit_through_cbor_pipe(f: impl FnOnce(&mut Ctx)) -> Vec<Value> {
         let sink = Sink::default();
-        let channel = Channel::new(Box::new(CborWriter {
-            out: sink.clone(),
-        }));
+        let channel = Channel::new(Box::new(CborWriter { out: sink.clone() }));
         {
             let mut ctx = Ctx {
                 io: &channel,
@@ -1013,7 +1003,10 @@ mod tests {
             plain["data"]
         );
         let bytes = super::payload_bytes(&encoded["data"]).expect("the byte path is tagged");
-        assert_eq!(bytes, cbor_document, "the bytes survive the wrapper verbatim");
+        assert_eq!(
+            bytes, cbor_document,
+            "the bytes survive the wrapper verbatim"
+        );
 
         // …and the two decoded contents are EQUAL.
         let from_bytes: Value = ciborium::from_reader(bytes.as_slice()).expect("decode");
@@ -1033,9 +1026,7 @@ mod tests {
         // and not text, so no codec could have chosen the readable spelling.
         let document: Vec<u8> = (0u16..96).map(|i| (i * 7 % 251) as u8).collect();
         let sink = Sink::default();
-        let channel = Channel::new(Box::new(CborWriter {
-            out: sink.clone(),
-        }));
+        let channel = Channel::new(Box::new(CborWriter { out: sink.clone() }));
         {
             let mut ctx = Ctx {
                 io: &channel,
@@ -1047,7 +1038,8 @@ mod tests {
         let wire = sink.0.lock().expect("sink").clone();
 
         assert!(
-            wire.windows(document.len()).any(|w| w == document.as_slice()),
+            wire.windows(document.len())
+                .any(|w| w == document.as_slice()),
             "the payload's bytes are on the wire"
         );
         let base64 = super::cbor_payload(&document)[super::CBOR_PAYLOAD_KEY]
@@ -1055,9 +1047,7 @@ mod tests {
             .expect("the mapping holds base64 text")
             .to_string();
         assert!(
-            !wire
-                .windows(base64.len())
-                .any(|w| w == base64.as_bytes()),
+            !wire.windows(base64.len()).any(|w| w == base64.as_bytes()),
             "a CBOR link must not carry the base64 spelling"
         );
 
@@ -1080,9 +1070,7 @@ mod tests {
     #[test]
     fn the_byte_path_crosses_a_json_link_unchanged() {
         let sink = Sink::default();
-        let channel = Channel::new(Box::new(JsonWriter {
-            out: sink.clone(),
-        }));
+        let channel = Channel::new(Box::new(JsonWriter { out: sink.clone() }));
         let document = vec![0x81, 0x01];
         {
             let mut ctx = Ctx {
@@ -1099,7 +1087,11 @@ mod tests {
         let frame = reader.read().expect("one line");
         let data = frame["host"]["args"]["data"].clone();
         assert_eq!(super::payload_bytes(&data), Some(document.clone()));
-        assert_eq!(super::cbor_payload(&document), data, "one wrapper, both codecs");
+        assert_eq!(
+            super::cbor_payload(&document),
+            data,
+            "one wrapper, both codecs"
+        );
     }
     /// The durable flag is part of the arm, not a host detail: a booth asks for a schedule
     /// that outlives its own process, and the frame must say so (aura ADR-0016 §1 — ns 27

@@ -102,7 +102,9 @@ impl<W: AsyncWrite + Unpin> Writer<W> {
     /// rather than as a stop (that is what the kill clock is for).
     pub async fn interrupt(&mut self, id: u64, budget: Duration) -> bool {
         self.write_line(
-            &induction_protocol::InterruptFrame::new(id).to_value().to_string(),
+            &induction_protocol::InterruptFrame::new(id)
+                .to_value()
+                .to_string(),
             budget,
         )
         .await
